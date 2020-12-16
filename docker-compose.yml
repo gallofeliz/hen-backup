@@ -1,0 +1,24 @@
+version: '3.5'
+services:
+  backup:
+    restart: unless-stopped
+    build:
+      context: .
+    user: "1000"
+    hostname: "my-computer"
+    volumes:
+      - /a:/a:ro
+      - /b:/b:ro
+    environment:
+      - RESTIC_PASSWORD=xxxxxxxxxxxxxxxxxxx
+      - RESTIC_REPOSITORY=swift:xxxxxxxxxxx:/
+      - OS_AUTH_URL=https://auth.cloud.ovh.net/v3
+      - OS_PROJECT_ID=xxxxxxxxxxxx
+      - OS_PROJECT_NAME=xxxxxxxxxxxx
+      - OS_REGION_NAME=GRA
+      - OS_USER_DOMAIN_NAME=Default
+      - OS_PROJECT_DOMAIN_ID=default
+      - OS_USERNAME=user-xxxxxxxxx
+      - OS_PASSWORD=xxxxx
+      - OS_IDENTITY_API_VERSION=3
+      - "BACKUP_PATHS=/a:/b"
