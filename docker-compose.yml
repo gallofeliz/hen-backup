@@ -21,4 +21,8 @@ services:
       - OS_USERNAME=user-xxxxxxxxx
       - OS_PASSWORD=xxxxx
       - OS_IDENTITY_API_VERSION=3
-      - "BACKUP_PATHS=/a:/b"
+      - BACKUP_PATHS=/a,/b
+      - BACKUP_EXCLUDE=.git,.sync
+      - BACKUP_SCHEDULE=43200
+      # NOTIF_TYPE=MQTT|HTTP
+      - NOTIF_URL=http://webhook/my-computer

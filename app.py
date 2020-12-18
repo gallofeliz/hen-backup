@@ -2,17 +2,23 @@
 
 import subprocess
 from subprocess import CalledProcessError
+from retrying import retry
+import time
 from time import sleep
 import sched
 import os
+from shlex import quote
+import requests
+import threading
 
 class Restic():
 
     def init(self):
         self.__run('init')
 
-    def backup(self, paths):
-        self.__run('backup', paths)
+    def backup(self, paths, excludes = []):
+        args = paths + map(lambda exclude : '--exclude=' + quote(exclude), excludes)
+        self.__run('backup', args)
 
     def is_init(self):
         try:
@@ -37,31 +43,50 @@ class Restic():
 
 restic = Restic()
 scheduler = sched.scheduler()
-backup_paths = os.environ['BACKUP_PATHS']
+list_separator = ','
+backup_paths = os.environ['BACKUP_PATHS'].split(list_separator)
+backup_exclude = os.environ['BACKUP_EXCLUDE'].split(list_separator)
+backup_schedule = int(os.environ['BACKUP_SCHEDULE'])
+notify_url = os.environ['NOTIF_URL']
 
+# for the moment only success
+# notify async (idea)
+def anotify(event_name):
+    event = {
+        'ts': round(time.time()),
+        'event': event_name
+    }
+    threading.Thread(target=notif, args=(event,)).start()
+
+@retry(wait_exponential_multiplier=1000, wait_exponential_max=300000, stop_max_attempt_number=30)
+def notif(event):
+    print('Notifying', event)
+    requests.post(notify_url, data = event)
+
+@retry(wait_exponential_multiplier=5000, wait_exponential_max=3600000)
 def init():
-    while True:
-        try:
-            print('Initializing')
-            if not restic.is_init():
-                restic.init()
-            print('Ready')
-            break
-        except Exception as e:
-            print('Init error', e)
-            print('Waiting before retry')
-            sleep(60)
+    try:
+        print('Initializing')
+        if not restic.is_init():
+            restic.init()
+        print('Ready')
+    except Exception as e:
+        print('Init error', e)
+        anotify('error')
+        raise e
 
+@retry(wait_exponential_multiplier=5000, wait_exponential_max=3600000)
 def backup():
     try:
         print('Backuping')
-        restic.backup(backup_paths.split(':'))
+        restic.backup(backup_paths, excludes=backup_exclude)
         print('Backup done !')
-        scheduler.enter(60 * 60 * 12, 1, backup)
+        scheduler.enter(backup_schedule, 1, backup)
+        anotify('backup-done')
     except Exception as e:
         print('Backup error', e)
-        print('Waiting before retry')
-        scheduler.enter(60, 1, backup)
+        anotify('error')
+        raise e
 
 init()
 backup()
