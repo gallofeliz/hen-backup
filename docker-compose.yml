@@ -24,5 +24,4 @@ services:
       - BACKUP_PATHS=/a,/b
       - BACKUP_EXCLUDE=.git,.sync
       - BACKUP_SCHEDULE=6h
-      # NOTIF_TYPE=MQTT|HTTP
-      - NOTIF_URL=https://webhook.site/c5585a39-96fa-462a-bcc7-7ad7c31ff9f7
+      - CHECK_SCHEDULE=1d
