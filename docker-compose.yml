@@ -1,14 +1,14 @@
 version: '3.5'
 services:
   backup:
-    restart: unless-stopped
+    #restart: unless-stopped
     build:
       context: .
     user: "1000"
     hostname: "my-computer"
-    volumes:
-      - /a:/a:ro
-      - /b:/b:ro
+    # volumes:
+    #   - /a:/a:ro
+    #   - /b:/b:ro
     environment:
       - RESTIC_PASSWORD=xxxxxxxxxxxxxxxxxxx
       - RESTIC_REPOSITORY=swift:xxxxxxxxxxx:/
@@ -21,7 +21,7 @@ services:
       - OS_USERNAME=user-xxxxxxxxx
       - OS_PASSWORD=xxxxx
       - OS_IDENTITY_API_VERSION=3
-      - BACKUP_PATHS=/a,/b
-      - BACKUP_EXCLUDE=.git,.sync
-      - BACKUP_SCHEDULE=6h
-      - CHECK_SCHEDULE=1d
+      # - BACKUP_PATHS=/a,/b
+      # - BACKUP_EXCLUDE=.git,.sync
+      # - BACKUP_SCHEDULE=6h
+      # - CHECK_SCHEDULE=1d
