@@ -4,14 +4,17 @@ services:
     #restart: unless-stopped
     build:
       context: .
-    user: "1000"
+    #user: "1000"
     hostname: "my-computer"
     # volumes:
     #   - /a:/a:ro
     #   - /b:/b:ro
+    volumes:
+      - /tmp/test2
     environment:
       - RESTIC_PASSWORD=xxxxxxxxxxxxxxxxxxx
-      - RESTIC_REPOSITORY=swift:xxxxxxxxxxx:/
+      # - RESTIC_REPOSITORY=swift:xxxxxxxxxxx:/
+      - RESTIC_REPOSITORY=/tmp/test
       - OS_AUTH_URL=https://auth.cloud.ovh.net/v3
       - OS_PROJECT_ID=xxxxxxxxxxxx
       - OS_PROJECT_NAME=xxxxxxxxxxxx
@@ -21,7 +24,4 @@ services:
       - OS_USERNAME=user-xxxxxxxxx
       - OS_PASSWORD=xxxxx
       - OS_IDENTITY_API_VERSION=3
-      # - BACKUP_PATHS=/a,/b
-      # - BACKUP_EXCLUDE=.git,.sync
-      # - BACKUP_SCHEDULE=6h
-      # - CHECK_SCHEDULE=1d
+

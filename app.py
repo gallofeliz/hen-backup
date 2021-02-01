@@ -1,9 +1,16 @@
 #!/usr/bin/env python
 
 import subprocess, threading, logging
+from retrying import retry
 
 logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] - %(message)s')
 
+class CallResticError(Exception):
+    def __init__(self, result):
+        self.result = result
+        self.message = 'Call Restic Error'
+    def get_result(self):
+        return self.result
 
 def call_restic(cmd, args = []):
     log_template = '(RESTIC) (%s) %s'
@@ -33,14 +40,52 @@ def call_restic(cmd, args = []):
 
     logging.debug(log_template, 'EXIT', str(code))
 
-    return {
+    result = {
         'code': code,
         'stdout': out,
         'stderr': err
     }
 
+    if code > 0:
+        raise CallResticError(result)
 
-print(call_restic('init', ['--repo', 'lol']))
+    return result
+
+def convert_to_seconds(duration):
+    seconds_per_unit = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
+    return int(duration[:-1]) * seconds_per_unit[duration[-1]]
+
+config = {
+    'backups': [
+        {
+            "name": 'main',
+            "paths": ['/a', '/b'],
+            "excludes": ['.git', '.sync'],
+            'frequency': '6h'
+        }
+    ],
+    'check': {
+        'frequency': '1d'
+    }
+}
+
+log_template = '(APP) (%s) %s'
+
+# def init():
+#     logging.info(log_template, 'INIT', 'Starting repository initialization')
+#     @retry(wait_fixed=convert_to_seconds('30m') * 1000)
+#     def try_init():
+#         try:
+#             call_restic('init')
+#         #except CallResticError as e:
+#         except Exception as e:
+#             logging.exception(log_template, 'INIT', 'Unable to init ; will retry later')
+#             raise e
+#     try_init()
+#     logging.info(log_template, 'INIT', 'Initialization ended')
+
+
+# init()
 # import subprocess
 # from subprocess import CalledProcessError
 # from retrying import retry
@@ -53,10 +98,8 @@ print(call_restic('init', ['--repo', 'lol']))
 # import threading
 # import logging
 
-# seconds_per_unit = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
+#
 
-# def convert_to_seconds(duration):
-#     return int(duration[:-1]) * seconds_per_unit[duration[-1]]
 
 # def convert_to_mseconds(duration):
 #     return convert_to_seconds(duration) * 1000
