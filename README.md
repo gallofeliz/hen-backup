@@ -1,9 +1,7 @@
-This is the daemon and you can call cmds `sudo docker-compose exec backup restic snapshots`
+# backuper
 
-## Init
+Like a daemon for Restic.
 
-`sudo docker-compose run --rm backup restic init`
+You also can call restic : `sudo docker-compose exec backup restic snapshots`
 
-## And then
-
-Enjoy !
+Unlock : `sudo docker-compose run --rm backup restic unlock`

@@ -53,21 +53,29 @@ def call_restic(cmd, args = []):
 
 def convert_to_seconds(duration):
     seconds_per_unit = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
-    return int(duration[:-1]) * seconds_per_unit[duration[-1]]
+    return int(duration[:-1]) * seconds_per_unit[duration[-1].lower()]
+
+def convert_to_KiB(size):
+    kilo_per_unit = {"k": 1, "m": 1024, "g": 1048576}
+    return int(size[:-1]) * kilo_per_unit[size[-1].lower()]
 
 def load_config():
     config = {
+        'global': {
+            'uploadLimit': os.environ.get('GLOBAL_UPLOAD_LIMIT'),
+            'downloadLimit': os.environ.get('GLOBAL_DOWNLOAD_LIMIT')
+        },
         'backups': [],
         'check': {
-            'frequency': os.environ['APP_CHECK_FREQUENCY']
+            'frequency': os.environ['CHECK_FREQUENCY']
         }
     }
 
     env_backups = {}
 
     for k, v in os.environ.items():
-        if k[0:11] == 'APP_BACKUP_':
-            name, *rest = k[11:].split('_')
+        if k[0:7] == 'BACKUP_':
+            name, *rest = k[7:].split('_')
             name = name.lower()
             rest = '_'.join(rest)
 
@@ -87,6 +95,9 @@ def load_config():
         }
         config['backups'].append(backup_config)
 
+    if not config['backups']:
+        raise Exception('Missing config backups')
+
     return config
 
 
@@ -97,13 +108,21 @@ config = load_config()
 
 logging.info(log_template, 'MAIN', 'GLOBAL', 'Starting APP with config ' + str(config))
 
+def get_restic_global_opts():
+    options = []
+    if config['global']['uploadLimit']:
+        options.extend(['--limit-upload', str(convert_to_KiB(config['global']['uploadLimit']))])
+    if config['global']['downloadLimit']:
+        options.extend(['--limit-download', str(convert_to_KiB(config['global']['downloadLimit']))])
+    return options
+
 def init():
     logging.info(log_template, 'INIT', 'GLOBAL', 'Starting repository initialization')
     try:
-        call_restic('init')
+        call_restic('init', get_restic_global_opts())
         logging.info(log_template, 'INIT', 'GLOBAL', 'Initialization ended :)')
     except Exception as e:
-        logging.info(log_template, 'INIT', 'GLOBAL', 'Unable to init :( ; skipping')
+        logging.info(log_template, 'INIT', 'GLOBAL', 'Unable to init ; probably already init else error')
 
 def schedule_backups():
     logging.info(log_template, 'BACKUP', 'GLOBAL', 'Scheduling backups')
@@ -111,7 +130,9 @@ def schedule_backups():
         logging.info(log_template, 'BACKUP', backup_config['name'], 'Starting backup')
         scheduler.enter(convert_to_seconds(backup_config['frequency']), 1, backup, (backup_config,))
         try:
-            call_restic('backup', ['--tag', quote('backup-' + backup_config['name'])] + backup_config['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup_config['excludes'])))
+            options = ['--tag', quote('backup-' + backup_config['name'])] + get_restic_global_opts()
+            args = backup_config['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup_config['excludes']))
+            call_restic('backup', options + args)
             logging.info(log_template, 'BACKUP', backup_config['name'], 'Backup ended :)')
             #scheduler.enter(convert_to_seconds(backup_config['frequency']), 1, backup, (backup_config,))
         except Exception as e:
@@ -127,130 +148,21 @@ def schedule_check():
         logging.info(log_template, 'CHECK', 'GLOBAL', 'Starting check')
         scheduler.enter(convert_to_seconds(config['check']['frequency']), 1, check)
         try:
-            call_restic('check')
+            call_restic('check', get_restic_global_opts())
             logging.info(log_template, 'CHECK', 'GLOBAL', 'Check ended :)')
         except Exception as e:
             logging.exception(log_template, 'CHECK', 'GLOBAL', 'Check failed :(')
     check()
 
+#def stats():
+    #call_restic('stats', ['--json']) # snapshots, list, stats but not the repository total size
+    #List snapshots by backups config
+    #Get global infos (snapshots count, repository size etc)
+    #pass
+
+# Make prune ?
 
 init()
 schedule_backups()
 schedule_check()
 scheduler.run()
-
-# def init():
-#     logging.info(log_template, 'INIT', 'Starting repository initialization')
-#     @retry(wait_fixed=convert_to_seconds('30m') * 1000)
-#     def try_init():
-#         try:
-#             call_restic('init')
-#         #except CallResticError as e:
-#         except Exception as e:
-#             logging.exception(log_template, 'INIT', 'Unable to init ; will retry later')
-#             raise e
-#     try_init()
-#     logging.info(log_template, 'INIT', 'Initialization ended')
-
-
-# init()
-# import subprocess
-# from subprocess import CalledProcessError
-# from retrying import retry
-# import time
-# from time import sleep
-# import sched
-# import os
-# from shlex import quote
-# import requests
-# import threading
-# import logging
-
-#
-
-
-# def convert_to_mseconds(duration):
-#     return convert_to_seconds(duration) * 1000
-
-# class Restic():
-#     def init(self):
-#         self.__run('init')
-
-#     def backup(self, paths, excludes = []):
-#         args = paths + map(lambda exclude : '--exclude=' + quote(exclude), excludes)
-#         self.__run('backup', args)
-
-#     def check():
-#         self.__run('check')
-
-#     def is_init(self):
-#         try:
-#             self.__run('check', [], True)
-#             return True
-#         except CalledProcessError as e:
-#             if e.stderr.find('conn.Object: Object Not Found') != -1:
-#                 return False
-#             raise e
-
-#     # Need to retry everytime ? Only if a network problem, etc, but I can't identify it, so for now I comment retry
-#     # @retry(wait_exponential_multiplier=convert_to_mseconds('5s'), wait_exponential_max=convert_to_mseconds('1m'), stop_max_attempt_number=5)
-#     def __run(self, cmd, args = [], capture_output = False):
-#         logging.debug('RESTIC START %s %s %s', cmd, 'with args', args)
-#         try:
-#             process_cmd_parts = ["restic"] + [cmd] + args
-#             process = subprocess.run(process_cmd_parts, capture_output=capture_output, check=True, text=True)
-#             logging.debug('RESTIC SUCCESS %s %s %s', process.returncode, process.stdout, process.stderr)
-#             return process
-#         except CalledProcessError as e:
-#             logging.debug('RESTIC ERROR %s %s %s', e.returncode, e.stdout, e.stderr)
-#             raise e
-
-# logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
-# restic = Restic()
-# scheduler = sched.scheduler()
-# list_separator = ','
-# backup_paths = os.environ['BACKUP_PATHS'].split(list_separator)
-# backup_exclude = os.environ['BACKUP_EXCLUDE'].split(list_separator)
-# backup_schedule = convert_to_seconds(os.environ['BACKUP_SCHEDULE'])
-# check_schedule = convert_to_seconds(os.environ['CHECK_SCHEDULE'])
-
-# @retry(wait_fixed=convert_to_mseconds('30m'))
-# def init():
-#     try:
-#         logging.info('Initializing...')
-#         if not restic.is_init():
-#             restic.init()
-#         logging.info('Initialized !')
-#     except Exception as e:
-#         logging.exception('Init error, will retry later')
-#         raise e
-
-# def schedule():
-#     backup()
-#     scheduler.enter(check_schedule, 1, check)
-#     scheduler.run()
-
-# @retry(wait_fixed=convert_to_mseconds('30m'))
-# def check():
-#     try:
-#         logging.info('Checking...')
-#         restic.check()
-#         logging.info('Check done !')
-#         scheduler.enter(check_schedule, 1, check)
-#     except Exception as e:
-#         logging.exception('Check error, will retry later')
-#         raise e
-
-# @retry(wait_fixed=convert_to_mseconds('30m'))
-# def backup():
-#     try:
-#         logging.info('Backuping...')
-#         restic.backup(backup_paths, excludes=backup_exclude)
-#         logging.info('Backup done !')
-#         scheduler.enter(backup_schedule, 1, backup)
-#     except Exception as e:
-#         logging.exception('Backup error, will retry later')
-#         raise e
-
-# init()
-# schedule()
