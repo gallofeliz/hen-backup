@@ -11,6 +11,7 @@ services:
     #   - /b:/b:ro
     volumes:
       - /tmp/test2
+      - ./:/a:ro
     environment:
       - RESTIC_PASSWORD=xxxxxxxxxxxxxxxxxxx
       # - RESTIC_REPOSITORY=swift:xxxxxxxxxxx:/
@@ -24,4 +25,7 @@ services:
       - OS_USERNAME=user-xxxxxxxxx
       - OS_PASSWORD=xxxxx
       - OS_IDENTITY_API_VERSION=3
-
+      - APP_BACKUP_MAIN_PATHS=/a,/b
+      - APP_BACKUP_MAIN_EXCLUDES=.git,.sync
+      - APP_BACKUP_MAIN_FREQUENCY=30m
+      - APP_CHECK_FREQUENCY=1d

@@ -1,7 +1,7 @@
 FROM python:alpine
 
 RUN apk add --no-cache restic && restic self-update
-RUN pip install retrying requests
+#RUN pip install retrying
 
 WORKDIR /app
 

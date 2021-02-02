@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
-import subprocess, threading, logging
-from retrying import retry
+import subprocess, threading, logging, sched, os
+from shlex import quote
 
-logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
 
 class CallResticError(Exception):
     def __init__(self, result):
@@ -13,7 +13,7 @@ class CallResticError(Exception):
         return self.result
 
 def call_restic(cmd, args = []):
-    log_template = '(RESTIC) (%s) %s'
+    log_template = '(RESTIC) (%s) - %s'
     cmd_parts = ["restic"] + [cmd] + args
     logging.debug(log_template, 'START', ' '.join(cmd_parts))
     proc = subprocess.Popen(
@@ -55,21 +55,89 @@ def convert_to_seconds(duration):
     seconds_per_unit = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
     return int(duration[:-1]) * seconds_per_unit[duration[-1]]
 
-config = {
-    'backups': [
-        {
-            "name": 'main',
-            "paths": ['/a', '/b'],
-            "excludes": ['.git', '.sync'],
-            'frequency': '6h'
+def load_config():
+    config = {
+        'backups': [],
+        'check': {
+            'frequency': os.environ['APP_CHECK_FREQUENCY']
         }
-    ],
-    'check': {
-        'frequency': '1d'
     }
-}
 
-log_template = '(APP) (%s) %s'
+    env_backups = {}
+
+    for k, v in os.environ.items():
+        if k[0:11] == 'APP_BACKUP_':
+            name, *rest = k[11:].split('_')
+            name = name.lower()
+            rest = '_'.join(rest)
+
+            if name not in env_backups:
+                env_backups[name] = {}
+
+            env_backups[name][rest] = v
+
+    for name in env_backups:
+        values = env_backups[name]
+        backup_config = {
+            'name': name,
+            'paths': values['PATHS'].split(','),
+            'excludes': values['EXCLUDES'].split(',') if 'EXCLUDES' in values else [],
+            'frequency': values['FREQUENCY'],
+            #'retryFrequency': values['RETRY_FREQUENCY'] if 'RETRY_FREQUENCY' in values else '30m'
+        }
+        config['backups'].append(backup_config)
+
+    return config
+
+
+# action target message
+log_template = '(APP) (%s) (%s) - %s'
+scheduler = sched.scheduler()
+config = load_config()
+
+logging.info(log_template, 'MAIN', 'GLOBAL', 'Starting APP with config ' + str(config))
+
+def init():
+    logging.info(log_template, 'INIT', 'GLOBAL', 'Starting repository initialization')
+    try:
+        call_restic('init')
+        logging.info(log_template, 'INIT', 'GLOBAL', 'Initialization ended :)')
+    except Exception as e:
+        logging.info(log_template, 'INIT', 'GLOBAL', 'Unable to init :( ; skipping')
+
+def schedule_backups():
+    logging.info(log_template, 'BACKUP', 'GLOBAL', 'Scheduling backups')
+    def backup(backup_config):
+        logging.info(log_template, 'BACKUP', backup_config['name'], 'Starting backup')
+        scheduler.enter(convert_to_seconds(backup_config['frequency']), 1, backup, (backup_config,))
+        try:
+            call_restic('backup', ['--tag', quote('backup-' + backup_config['name'])] + backup_config['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup_config['excludes'])))
+            logging.info(log_template, 'BACKUP', backup_config['name'], 'Backup ended :)')
+            #scheduler.enter(convert_to_seconds(backup_config['frequency']), 1, backup, (backup_config,))
+        except Exception as e:
+            logging.exception(log_template, 'BACKUP', backup_config['name'], 'Backup failed :(')
+            #logging.exception(log_template, 'BACKUP', backup_config['name'], 'Backup failed :( ; will retry later')
+            #scheduler.enter(convert_to_seconds(backup_config['retryFrequency']), 1, backup, (backup_config,))
+    for backup_config in config['backups']:
+        backup(backup_config)
+
+def schedule_check():
+    logging.info(log_template, 'CHECK', 'GLOBAL', 'Scheduling check')
+    def check():
+        logging.info(log_template, 'CHECK', 'GLOBAL', 'Starting check')
+        scheduler.enter(convert_to_seconds(config['check']['frequency']), 1, check)
+        try:
+            call_restic('check')
+            logging.info(log_template, 'CHECK', 'GLOBAL', 'Check ended :)')
+        except Exception as e:
+            logging.exception(log_template, 'CHECK', 'GLOBAL', 'Check failed :(')
+    check()
+
+
+init()
+schedule_backups()
+schedule_check()
+scheduler.run()
 
 # def init():
 #     logging.info(log_template, 'INIT', 'Starting repository initialization')
