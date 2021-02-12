@@ -2,6 +2,8 @@ FROM python:alpine
 
 RUN apk add --no-cache restic && restic self-update
 
+RUN pip install croniter
+
 WORKDIR /app
 
 ADD app.py .

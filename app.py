@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-import subprocess, threading, logging, sched, os
+import subprocess, threading, logging, sched, os, time
 from shlex import quote
+from croniter import croniter
 
 logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
 
@@ -67,7 +68,7 @@ def load_config():
         },
         'backups': [],
         'check': {
-            'frequency': os.environ['CHECK_FREQUENCY']
+            'schedule': os.environ['CHECK_SCHEDULE']
         }
     }
 
@@ -90,8 +91,8 @@ def load_config():
             'name': name,
             'paths': values['PATHS'].split(','),
             'excludes': values['EXCLUDES'].split(',') if 'EXCLUDES' in values else [],
-            'frequency': values['FREQUENCY'],
-            #'retryFrequency': values['RETRY_FREQUENCY'] if 'RETRY_FREQUENCY' in values else '30m'
+            'schedule': values['SCHEDULE'],
+            #'retryFrequency': values['RETRY_SCHEDULE'] if 'RETRY_SCHEDULE' in values else '30m'
         }
         config['backups'].append(backup_config)
 
@@ -103,10 +104,16 @@ def load_config():
 
 # action target message
 log_template = '(APP) (%s) (%s) - %s'
-scheduler = sched.scheduler()
+scheduler = sched.scheduler(time.time)
 config = load_config()
 
 logging.info(log_template, 'MAIN', 'GLOBAL', 'Starting APP with config ' + str(config))
+
+def schedule_action(str_schedule, fn, args = ()):
+    if ' ' in str_schedule:
+        scheduler.enterabs(croniter(str_schedule).get_next(), 1, fn, args)
+    else:
+        scheduler.enter(convert_to_seconds(str_schedule), 1, fn, args)
 
 def get_restic_global_opts():
     options = []
@@ -128,13 +135,13 @@ def schedule_backups():
     logging.info(log_template, 'BACKUP', 'GLOBAL', 'Scheduling backups')
     def backup(backup_config):
         logging.info(log_template, 'BACKUP', backup_config['name'], 'Starting backup')
-        scheduler.enter(convert_to_seconds(backup_config['frequency']), 1, backup, (backup_config,))
+        schedule_action(backup_config['schedule'], backup, (backup_config,))
         try:
             options = ['--tag', quote('backup-' + backup_config['name'])] + get_restic_global_opts()
             args = backup_config['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup_config['excludes']))
             call_restic('backup', options + args)
             logging.info(log_template, 'BACKUP', backup_config['name'], 'Backup ended :)')
-            #scheduler.enter(convert_to_seconds(backup_config['frequency']), 1, backup, (backup_config,))
+            #scheduler.enter(convert_to_seconds(backup_config['schedule']), 1, backup, (backup_config,))
         except Exception as e:
             logging.exception(log_template, 'BACKUP', backup_config['name'], 'Backup failed :(')
             #logging.exception(log_template, 'BACKUP', backup_config['name'], 'Backup failed :( ; will retry later')
@@ -146,7 +153,7 @@ def schedule_check():
     logging.info(log_template, 'CHECK', 'GLOBAL', 'Scheduling check')
     def check():
         logging.info(log_template, 'CHECK', 'GLOBAL', 'Starting check')
-        scheduler.enter(convert_to_seconds(config['check']['frequency']), 1, check)
+        schedule_action(config['check']['schedule'], check)
         try:
             call_restic('check', get_restic_global_opts())
             logging.info(log_template, 'CHECK', 'GLOBAL', 'Check ended :)')
