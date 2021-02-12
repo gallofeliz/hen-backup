@@ -2,7 +2,7 @@ FROM python:alpine
 
 RUN apk add --no-cache restic && restic self-update
 
-RUN pip install croniter
+RUN pip install croniter python-json-logger
 
 WORKDIR /app
 

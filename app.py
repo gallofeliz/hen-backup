@@ -3,8 +3,15 @@
 import subprocess, threading, logging, sched, os, time
 from shlex import quote
 from croniter import croniter
+from pythonjsonlogger import jsonlogger
 
-logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
+logging.basicConfig(level=logging.DEBUG)
+
+logHandler = logging.StreamHandler()
+formatter = jsonlogger.JsonFormatter('%(levelname)%(message)')
+logHandler.setFormatter(formatter)
+logging.getLogger().handlers = []
+logging.getLogger().addHandler(logHandler)
 
 class CallResticError(Exception):
     def __init__(self, result):
@@ -14,9 +21,8 @@ class CallResticError(Exception):
         return self.result
 
 def call_restic(cmd, args = []):
-    log_template = '(RESTIC) (%s) - %s'
     cmd_parts = ["restic"] + [cmd] + args
-    logging.debug(log_template, 'START', ' '.join(cmd_parts))
+    logging.debug('START ' + ' '.join(cmd_parts), extra={'action': 'call_restic', 'status': 'starting'})
     proc = subprocess.Popen(
         cmd_parts,
         stdout=subprocess.PIPE,
@@ -31,7 +37,7 @@ def call_restic(cmd, args = []):
         for rline in iter(stream.readline, ''):
             line = rline.rstrip()
             if line:
-                logging.debug(log_template, channel, line)
+                logging.debug(channel + ' ' + line, extra={'action': 'call_restic', 'status': 'running'})
                 stack.append(line)
 
 
@@ -39,7 +45,7 @@ def call_restic(cmd, args = []):
     threading.Thread(target=log, args=(proc.stderr, 'STDERR', err,)).start()
     code = proc.wait()
 
-    logging.debug(log_template, 'EXIT', str(code))
+    logging.debug('EXIT ' + str(code), extra={'action': 'call_restic', 'status': 'failure' if code else 'success'})
 
     result = {
         'code': code,
@@ -103,11 +109,10 @@ def load_config():
 
 
 # action target message
-log_template = '(APP) (%s) (%s) - %s'
 scheduler = sched.scheduler(time.time)
 config = load_config()
 
-logging.info(log_template, 'MAIN', 'GLOBAL', 'Starting APP with config ' + str(config))
+logging.info('Starting APP with config ' + str(config), extra={'action': 'main', 'status': 'starting'})
 
 def schedule_action(str_schedule, fn, args = ()):
     if ' ' in str_schedule:
@@ -124,41 +129,41 @@ def get_restic_global_opts():
     return options
 
 def init():
-    logging.info(log_template, 'INIT', 'GLOBAL', 'Starting repository initialization')
+    logging.info('Starting repository initialization', extra={'action': 'init', 'status': 'starting'})
     try:
         call_restic('init', get_restic_global_opts())
-        logging.info(log_template, 'INIT', 'GLOBAL', 'Initialization ended :)')
+        logging.info('Initialization ended :)', extra={'action': 'init', 'status': 'success'})
     except Exception as e:
-        logging.info(log_template, 'INIT', 'GLOBAL', 'Unable to init ; probably already init else error')
+        logging.info('Unable to init ; probably already init else error', extra={'action': 'init', 'status': 'failure'})
 
 def schedule_backups():
-    logging.info(log_template, 'BACKUP', 'GLOBAL', 'Scheduling backups')
+    logging.info('Scheduling backups', extra={'action': 'schedule_backups', 'status': 'starting'})
     def backup(backup_config):
-        logging.info(log_template, 'BACKUP', backup_config['name'], 'Starting backup')
+        logging.info('Starting backup', extra={'action': 'backup', 'backup': backup_config['name'], 'status': 'starting'})
         schedule_action(backup_config['schedule'], backup, (backup_config,))
         try:
             options = ['--tag', quote('backup-' + backup_config['name'])] + get_restic_global_opts()
             args = backup_config['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup_config['excludes']))
             call_restic('backup', options + args)
-            logging.info(log_template, 'BACKUP', backup_config['name'], 'Backup ended :)')
+            logging.info('Backup ended :)', extra={'action': 'backup', 'backup': backup_config['name'], 'status': 'success'})
             #scheduler.enter(convert_to_seconds(backup_config['schedule']), 1, backup, (backup_config,))
         except Exception as e:
-            logging.exception(log_template, 'BACKUP', backup_config['name'], 'Backup failed :(')
+            logging.exception('Backup failed :(', extra={'action': 'backup', 'backup': backup_config['name'], 'status': 'failure'})
             #logging.exception(log_template, 'BACKUP', backup_config['name'], 'Backup failed :( ; will retry later')
             #scheduler.enter(convert_to_seconds(backup_config['retryFrequency']), 1, backup, (backup_config,))
     for backup_config in config['backups']:
         backup(backup_config)
 
 def schedule_check():
-    logging.info(log_template, 'CHECK', 'GLOBAL', 'Scheduling check')
+    logging.info('Scheduling check', extra={'action': 'schedule_check', 'status': 'starting'})
     def check():
-        logging.info(log_template, 'CHECK', 'GLOBAL', 'Starting check')
+        logging.info('Starting check', extra={'action': 'check', 'status': 'starting'})
         schedule_action(config['check']['schedule'], check)
         try:
             call_restic('check', get_restic_global_opts())
-            logging.info(log_template, 'CHECK', 'GLOBAL', 'Check ended :)')
+            logging.info('Check ended :)', extra={'action': 'check', 'status': 'success'})
         except Exception as e:
-            logging.exception(log_template, 'CHECK', 'GLOBAL', 'Check failed :(')
+            logging.exception('Check failed :(', extra={'action': 'check', 'status': 'failure'})
     check()
 
 #def stats():
