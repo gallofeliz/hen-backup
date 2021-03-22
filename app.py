@@ -2,8 +2,42 @@
 
 import subprocess, threading, logging, sched, os, time
 from shlex import quote
-from croniter import croniter
-from pythonjsonlogger import jsonlogger
+from gallocloud_utils.scheduling import get_next_schedule_time
+from gallocloud_utils.jsonlogging import configure_logger
+from gallocloud_utils.config import load_config_from_env
+from flatten_dict import flatten
+
+def load_config():
+    def format(config):
+        config['repositories'] = config.pop('repository')
+        config['backups'] = config.pop('backup')
+        for name in config['repositories']:
+            repository = config['repositories'][name]
+            repository['check'] = repository.get('check')
+            repository['providerEnv'] = {}
+            for provider_name in ['os', 'aws']:
+                if provider_name in repository:
+                    repository['providerEnv'] = flatten(
+                        repository[provider_name],
+                        reducer=lambda k1, k2: provider_name.upper() + '_' + k2.upper() if k1 is None else k1 + '_' + k2.upper()
+                    )
+                    del repository[provider_name]
+
+        for name in config['backups']:
+            backup = config['backups'][name]
+            backup['paths'] = backup['paths'].split(',')
+            backup['repositories'] = backup['repositories'].split(',')
+            backup['schedule'] = backup['schedule'].split(';')
+            backup['excludes'] = backup['excludes'].split(',') if 'excludes' in backup else []
+            backup['hostname'] = backup['hostname'] if 'hostname' in backup else config['hostname']
+        return config
+    return load_config_from_env(formatter=format)
+
+print(load_config())
+exit()
+
+
+
 
 logging.basicConfig(level=logging.DEBUG)
 
