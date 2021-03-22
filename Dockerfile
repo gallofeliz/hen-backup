@@ -11,8 +11,6 @@ RUN pip install flatten-dict
 
 WORKDIR /app
 
-ADD app.py .
-
-ENV RESTIC_CACHE_DIR=/tmp
+ADD app.py restic.py ./
 
 CMD python -u ./app.py
