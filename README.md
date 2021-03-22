@@ -1,7 +1,14 @@
 # backuper
 
-Like a daemon for Restic.
+Backup daemon tool :
+- Automatic
+- Monitorable
+- Encrypted backups
+- Multi-backups definitions (directories, schedules, etc)
+- Multi-repositories by backups
+- Various providers supported (OVH, AWS, filesystem, etc)
+- Fiable ?
 
-You also can call restic : `sudo docker-compose exec backup restic snapshots`
+## Warning
 
-Unlock : `sudo docker-compose run --rm backup restic unlock`
+Even if most of the job is done by Restic (https://github.com/restic/restic), this tool is not a Restic frontend. Restic can be removed for another backup app without changing contracts or features of backuper.
