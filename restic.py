@@ -1,18 +1,19 @@
 import subprocess, threading
 
-class CallRescError(Exception):
+class CallResticError(Exception):
     def __init__(self, result):
         self.result = result
         self.message = 'Call Restic Error'
     def get_result(self):
         return self.result
 
-def call_restic(cmd, args = [], env={}):
+def call_restic(cmd, args, env, logger):
     cmd_parts = ["restic"] + [cmd] + args
-    logger.debug('START ' + ' '.join(cmd_parts), extra={'action': 'call_restic', 'status': 'starting'})
+    env = {**env, 'RESTIC_CACHE_DIR':'/tmp'}
+    logger.debug('START ' + ' '.join(cmd_parts) + ' with env ' + str(env), extra={'action': 'call_restic', 'status': 'starting'})
     proc = subprocess.Popen(
         cmd_parts,
-        env={**env, RESTIC_CACHE_DIR:'/tmp'},
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         universal_newlines=True

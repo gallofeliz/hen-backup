@@ -18,7 +18,7 @@ def load_config():
             if repository['check']:
                 repository['check']['schedule'] = repository['check']['schedule'].split(';')
             repository['providerEnv'] = {}
-            for provider_name in ['os', 'aws']:
+            for provider_name in ['os', 'aws', 'st', 'b2', 'azure', 'google', 'rclone']:
                 if provider_name in repository:
                     repository['providerEnv'] = flatten(
                         repository[provider_name],
@@ -43,8 +43,28 @@ def convert_to_KiB(size):
     kilo_per_unit = {"k": 1, "m": 1024, "g": 1048576}
     return int(size[:-1]) * kilo_per_unit[size[-1].lower()]
 
+def get_restic_global_opts():
+    options = []
+    if config['uploadlimit']:
+        options.extend(['--limit-upload', str(convert_to_KiB(config['uploadlimit']))])
+    if config['downloadlimit']:
+        options.extend(['--limit-download', str(convert_to_KiB(config['downloadlimit']))])
+    return options
+
+def get_restic_repository_envs(repository):
+    return {
+        'RESTIC_REPOSITORY': repository['location'],
+        'RESTIC_PASSWORD': repository['password'],
+        **repository['providerEnv']
+    }
+
 def init_repository(repository):
-    print('init ' + repository['name'])
+    logger.info('Starting repository initialization', extra={'action': 'init_repository', 'repository': repository['name'], 'status': 'starting'})
+    try:
+        call_restic(cmd='init', args=get_restic_global_opts(), env=get_restic_repository_envs(repository), logger=logger)
+        logger.info('Initialization ended :)', extra={'action': 'init_repository', 'repository': repository['name'], 'status': 'success'})
+    except Exception as e:
+        logger.info('Unable to init ; probably already init else error ('+str(e)+')', extra={'action': 'init_repository', 'repository': repository['name'], 'status': 'failure'})
 
 def check_repository(repository):
     print('check ' + repository['name'])
@@ -57,6 +77,7 @@ logger = configure_logger(config['log']['level'])
 scheduler = create_scheduler()
 
 logger.info('Starting APP', extra={'action': 'main', 'status': 'starting'})
+logger.debug('Loaded config ' + str(config), extra={'action': 'main', 'status': 'starting'})
 
 for repository_name in config['repositories']:
     repository = config['repositories'][repository_name]
@@ -70,37 +91,7 @@ for backup_name in config['backups']:
 
 scheduler.run()
 
-
-
-
-
-
-
-
-# # action target message
-# scheduler = sched.scheduler(time.time)
-
-# def schedule_action(str_schedule, fn, args = ()):
-#     if ' ' in str_schedule:
-#         scheduler.enterabs(croniter(str_schedule).get_next(), 1, fn, args)
-#     else:
-#         scheduler.enter(convert_to_seconds(str_schedule), 1, fn, args)
-
-# def get_restic_global_opts():
-#     options = []
-#     if config['global']['uploadLimit']:
-#         options.extend(['--limit-upload', str(convert_to_KiB(config['global']['uploadLimit']))])
-#     if config['global']['downloadLimit']:
-#         options.extend(['--limit-download', str(convert_to_KiB(config['global']['downloadLimit']))])
-#     return options
-
 # def init():
-#     logger.info('Starting repository initialization', extra={'action': 'init', 'status': 'starting'})
-#     try:
-#         call_restic('init', get_restic_global_opts())
-#         logger.info('Initialization ended :)', extra={'action': 'init', 'status': 'success'})
-#     except Exception as e:
-#         logger.info('Unable to init ; probably already init else error', extra={'action': 'init', 'status': 'failure'})
 
 # def schedule_backups():
 #     logger.info('Scheduling backups', extra={'action': 'schedule_backups', 'status': 'starting'})
