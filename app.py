@@ -67,10 +67,31 @@ def init_repository(repository):
         logger.info('Unable to init ; probably already init else error ('+str(e)+')', extra={'action': 'init_repository', 'repository': repository['name'], 'status': 'failure'})
 
 def check_repository(repository):
-    print('check ' + repository['name'])
+    logger.info('Starting check', extra={'action': 'check_repository', 'repository': repository['name'], 'status': 'starting'})
+    try:
+        call_restic(cmd='check', args=get_restic_global_opts(), env=get_restic_repository_envs(repository), logger=logger)
+        logger.info('Check ended :)', extra={'action': 'check_repository', 'repository': repository['name'], 'status': 'success'})
+    except Exception as e:
+        logger.exception('Check failed :(', extra={'action': 'check_repository', 'repository': repository['name'], 'status': 'failure'})
 
 def do_backup(backup):
-    print('backup ' + backup['name'])
+    logger.info('Starting backup', extra={'action': 'backup', 'backup': backup['name'], 'status': 'starting'})
+    success = True
+    for repository in backup['repositories']:
+        logger.info('Starting backup on repository', extra={'action': 'backup', 'backup': backup['name'], 'repository': repository['name'], 'status': 'starting'})
+        try:
+            options = ['--tag', quote('backup-' + backup['name'])] + get_restic_global_opts()
+            args = backup['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup['excludes']))
+            call_restic(cmd='backup', args=options + args, env=get_restic_repository_envs(repository), logger=logger)
+            logger.info('Backup on repository ended :)', extra={'action': 'backup', 'backup': backup['name'], 'repository': repository['name'], 'status': 'success'})
+        except Exception as e:
+            logger.exception('Backup on repository failed :(', extra={'action': 'backup', 'backup': backup['name'], 'repository': repository['name'], 'status': 'failure'})
+            success = False
+
+    if success:
+        logger.info('Backup ended :)', extra={'action': 'backup', 'backup': backup['name'], 'status': 'success'})
+    else:
+        logger.error('Backup failed (one or more backup in repository failed) :(', extra={'action': 'backup', 'backup': backup['name'], 'status': 'failure'})
 
 config = load_config()
 logger = configure_logger(config['log']['level'])
@@ -90,48 +111,3 @@ for backup_name in config['backups']:
     schedule(backup['schedule'], do_backup, args=(backup,), runAtBegin=True, scheduler=scheduler)
 
 scheduler.run()
-
-# def init():
-
-# def schedule_backups():
-#     logger.info('Scheduling backups', extra={'action': 'schedule_backups', 'status': 'starting'})
-#     def backup(backup_config):
-#         logger.info('Starting backup', extra={'action': 'backup', 'backup': backup_config['name'], 'status': 'starting'})
-#         schedule_action(backup_config['schedule'], backup, (backup_config,))
-#         try:
-#             options = ['--tag', quote('backup-' + backup_config['name'])] + get_restic_global_opts()
-#             args = backup_config['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup_config['excludes']))
-#             call_restic('backup', options + args)
-#             logger.info('Backup ended :)', extra={'action': 'backup', 'backup': backup_config['name'], 'status': 'success'})
-#             #scheduler.enter(convert_to_seconds(backup_config['schedule']), 1, backup, (backup_config,))
-#         except Exception as e:
-#             logger.exception('Backup failed :(', extra={'action': 'backup', 'backup': backup_config['name'], 'status': 'failure'})
-#             #logger.exception(log_template, 'BACKUP', backup_config['name'], 'Backup failed :( ; will retry later')
-#             #scheduler.enter(convert_to_seconds(backup_config['retryFrequency']), 1, backup, (backup_config,))
-#     for backup_config in config['backups']:
-#         backup(backup_config)
-
-# def schedule_check():
-#     logger.info('Scheduling check', extra={'action': 'schedule_check', 'status': 'starting'})
-#     def check():
-#         logger.info('Starting check', extra={'action': 'check', 'status': 'starting'})
-#         schedule_action(config['check']['schedule'], check)
-#         try:
-#             call_restic('check', get_restic_global_opts())
-#             logger.info('Check ended :)', extra={'action': 'check', 'status': 'success'})
-#         except Exception as e:
-#             logger.exception('Check failed :(', extra={'action': 'check', 'status': 'failure'})
-#     check()
-
-# #def stats():
-#     #call_restic('stats', ['--json']) # snapshots, list, stats but not the repository total size
-#     #List snapshots by backups config
-#     #Get global infos (snapshots count, repository size etc)
-#     #pass
-
-# # Make prune ?
-
-# init()
-# schedule_backups()
-# schedule_check()
-# scheduler.run()
