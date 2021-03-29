@@ -32,9 +32,11 @@ def load_config():
             backup['name'] = name
             backup['paths'] = backup['paths'].split(',')
             backup['repositories'] = list(map(lambda name: config['repositories'][name.lower()], backup['repositories'].split(',')))
-            backup['schedule'] = backup['schedule'].split(';')
+            backup['schedule'] = backup['schedule'].split(';') if 'schedule' in backup else []
             backup['excludes'] = backup['excludes'].split(',') if 'excludes' in backup else []
             backup['hostname'] = backup['hostname'] if 'hostname' in backup else config['hostname']
+            backup['watch'] = False if backup.get('watch', 'false') in ['0', 'false', ''] True
+
         config['log'] = config.get('log', {})
         config['log']['level'] = config['log'].get('level', 'info').upper()
         return config
@@ -117,13 +119,16 @@ for repository_name in config['repositories']:
 
 for backup_name in config['backups']:
     backup = config['backups'][backup_name]
-    schedule(
-        backup['schedule'],
-        lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
-        args=(backup,),
-        runAtBegin=True,
-        scheduler=scheduler
-    )
+    if backup['schedule']:
+        schedule(
+            backup['schedule'],
+            lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
+            args=(backup,),
+            runAtBegin=True,
+            scheduler=scheduler
+        )
+    if backup['watch']:
+        pass
 
 fn_queue_runner.run()
 scheduler.run()
