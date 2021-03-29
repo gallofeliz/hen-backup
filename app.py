@@ -4,6 +4,7 @@ from shlex import quote
 from gallocloud_utils.scheduling import schedule, create_scheduler
 from gallocloud_utils.jsonlogging import configure_logger
 from gallocloud_utils.config import load_config_from_env
+from fnqueue import FnQueue, ThreadedFnQueueRunner
 from flatten_dict import flatten
 from restic import call_restic
 
@@ -96,18 +97,33 @@ def do_backup(backup):
 config = load_config()
 logger = configure_logger(config['log']['level'])
 scheduler = create_scheduler()
+fn_queue = FnQueue()
+fn_queue_runner = ThreadedFnQueueRunner(fn_queue)
 
 logger.info('Starting APP', extra={'action': 'main', 'status': 'starting'})
 logger.debug('Loaded config ' + str(config), extra={'action': 'main', 'status': 'starting'})
 
 for repository_name in config['repositories']:
     repository = config['repositories'][repository_name]
-    init_repository(repository)
+    fn_queue.push(fn=init_repository, args=(repository, ))
     if repository['check']:
-        schedule(repository['check']['schedule'], check_repository, args=(repository,), runAtBegin=True, scheduler=scheduler)
+        schedule(
+            repository['check']['schedule'],
+            lambda repository: fn_queue.push(fn=check_repository, args=(repository, )),
+            args=(repository,),
+            runAtBegin=True,
+            scheduler=scheduler
+        )
 
 for backup_name in config['backups']:
     backup = config['backups'][backup_name]
-    schedule(backup['schedule'], do_backup, args=(backup,), runAtBegin=True, scheduler=scheduler)
+    schedule(
+        backup['schedule'],
+        lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
+        args=(backup,),
+        runAtBegin=True,
+        scheduler=scheduler
+    )
 
+fn_queue_runner.run()
 scheduler.run()

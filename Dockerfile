@@ -11,6 +11,6 @@ RUN pip install flatten-dict
 
 WORKDIR /app
 
-ADD app.py restic.py ./
+ADD app.py restic.py fnqueue.py ./
 
 CMD python -u ./app.py
