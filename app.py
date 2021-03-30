@@ -4,8 +4,10 @@ from shlex import quote
 from gallocloud_utils.scheduling import schedule, create_scheduler
 from gallocloud_utils.jsonlogging import configure_logger
 from gallocloud_utils.config import load_config_from_env
+from fnqueue import FnQueue, ThreadedFnQueueRunner
 from flatten_dict import flatten
 from restic import call_restic
+from watcher import create_watch_callback
 
 def load_config():
     def format(config):
@@ -31,9 +33,11 @@ def load_config():
             backup['name'] = name
             backup['paths'] = backup['paths'].split(',')
             backup['repositories'] = list(map(lambda name: config['repositories'][name.lower()], backup['repositories'].split(',')))
-            backup['schedule'] = backup['schedule'].split(';')
+            backup['schedule'] = backup['schedule'].split(';') if 'schedule' in backup else []
             backup['excludes'] = backup['excludes'].split(',') if 'excludes' in backup else []
             backup['hostname'] = backup['hostname'] if 'hostname' in backup else config['hostname']
+            backup['watch'] = False if backup.get('watch', 'false') in ['0', 'false', ''] else True
+
         config['log'] = config.get('log', {})
         config['log']['level'] = config['log'].get('level', 'info').upper()
         return config
@@ -96,18 +100,41 @@ def do_backup(backup):
 config = load_config()
 logger = configure_logger(config['log']['level'])
 scheduler = create_scheduler()
+fn_queue = FnQueue()
+fn_queue_runner = ThreadedFnQueueRunner(fn_queue)
 
 logger.info('Starting APP', extra={'action': 'main', 'status': 'starting'})
 logger.debug('Loaded config ' + str(config), extra={'action': 'main', 'status': 'starting'})
 
 for repository_name in config['repositories']:
     repository = config['repositories'][repository_name]
-    init_repository(repository)
+    fn_queue.push(fn=init_repository, args=(repository, ))
     if repository['check']:
-        schedule(repository['check']['schedule'], check_repository, args=(repository,), runAtBegin=True, scheduler=scheduler)
+        schedule(
+            repository['check']['schedule'],
+            lambda repository: fn_queue.push(fn=check_repository, args=(repository, )),
+            args=(repository,),
+            runAtBegin=True,
+            scheduler=scheduler
+        )
 
 for backup_name in config['backups']:
     backup = config['backups'][backup_name]
-    schedule(backup['schedule'], do_backup, args=(backup,), runAtBegin=True, scheduler=scheduler)
+    if backup['schedule']:
+        schedule(
+            backup['schedule'],
+            lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
+            args=(backup,),
+            runAtBegin=True,
+            scheduler=scheduler
+        )
+    if backup['watch']:
+        # use PatternMatchingEventHandler for exludes ?
+        create_watch_callback(
+            backup['paths'],
+            lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
+            args=(backup,)
+        )
 
+fn_queue_runner.run()
 scheduler.run()

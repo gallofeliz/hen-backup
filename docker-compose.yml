@@ -9,9 +9,10 @@ services:
       - ./:/directory1:ro
       - ./:/directory2:ro
       - ./:/directory3:ro
+      - ./:/directory4:ro
     env_file:
       - .env
-    environment:
+    #environment:
         # "Schedule" keys can be cron or times (2h, 4d, 1w), and multiples values separated by ";"
 
         # REPOSITORY_OVH-GRA_LOCATION=swift:xx:/
