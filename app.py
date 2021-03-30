@@ -7,6 +7,7 @@ from gallocloud_utils.config import load_config_from_env
 from fnqueue import FnQueue, ThreadedFnQueueRunner
 from flatten_dict import flatten
 from restic import call_restic
+from watcher import create_watch_callback
 
 def load_config():
     def format(config):
@@ -35,7 +36,7 @@ def load_config():
             backup['schedule'] = backup['schedule'].split(';') if 'schedule' in backup else []
             backup['excludes'] = backup['excludes'].split(',') if 'excludes' in backup else []
             backup['hostname'] = backup['hostname'] if 'hostname' in backup else config['hostname']
-            backup['watch'] = False if backup.get('watch', 'false') in ['0', 'false', ''] True
+            backup['watch'] = False if backup.get('watch', 'false') in ['0', 'false', ''] else True
 
         config['log'] = config.get('log', {})
         config['log']['level'] = config['log'].get('level', 'info').upper()
@@ -128,7 +129,12 @@ for backup_name in config['backups']:
             scheduler=scheduler
         )
     if backup['watch']:
-        pass
+        # use PatternMatchingEventHandler for exludes ?
+        create_watch_callback(
+            backup['paths'],
+            lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
+            args=(backup,)
+        )
 
 fn_queue_runner.run()
 scheduler.run()

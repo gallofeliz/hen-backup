@@ -7,10 +7,10 @@ RUN apk add --update --no-cache --virtual .tmp git \
     && pip install git+https://github.com/gallofeliz/python-gallocloud-utils \
     && apk del .tmp
 
-RUN pip install flatten-dict
+RUN pip install flatten-dict watchdog
 
 WORKDIR /app
 
-ADD app.py restic.py fnqueue.py ./
+ADD app.py restic.py fnqueue.py watcher.py ./
 
 CMD python -u ./app.py

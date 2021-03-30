@@ -9,6 +9,7 @@ services:
       - ./:/directory1:ro
       - ./:/directory2:ro
       - ./:/directory3:ro
+      - ./:/directory4:ro
     env_file:
       - .env
     #environment:
