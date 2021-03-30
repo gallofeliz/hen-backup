@@ -16,6 +16,7 @@ See docker-compose.yml
 Notes :
 - Multiple repositories are configurable
 - Multiple backups are configurable and linked to one or multiple repositories
+- Backups are schedulable by durations (ex 5m, 1h, 12h, 1d, etc), and/or cron (ex `*/15 * * * *`), and/or watching changes
 
 So you can :
 - Define multiple backups, for example 1 for each application ; Or with NFS, one for each machine (in a network)
