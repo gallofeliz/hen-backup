@@ -8,9 +8,12 @@ from fnqueue import FnQueue, ThreadedFnQueueRunner
 from flatten_dict import flatten
 from restic import call_restic
 from watcher import create_watch_callback
+from server import run_threaded_server
 
 def load_config():
     def format(config):
+        config['server'] = config.get('server', {})
+        config['server']['port'] = int(config['server'].get('port', '8080'))
         config['repositories'] = config.pop('repository')
         config['backups'] = config.pop('backup')
         for name in config['repositories']:
@@ -136,5 +139,6 @@ for backup_name in config['backups']:
             args=(backup,)
         )
 
+run_threaded_server(config, logger)
 fn_queue_runner.run()
 scheduler.run()

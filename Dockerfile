@@ -11,6 +11,6 @@ RUN pip install flatten-dict watchdog
 
 WORKDIR /app
 
-ADD app.py restic.py fnqueue.py watcher.py ./
+ADD app.py restic.py fnqueue.py watcher.py server.py ./
 
 CMD python -u ./app.py

@@ -12,6 +12,8 @@ services:
       - ./:/directory4:ro
     env_file:
       - .env
+    ports:
+      - "8080:8080"
     #environment:
         # "Schedule" keys can be cron or times (2h, 4d, 1w), and multiples values separated by ";"
 
