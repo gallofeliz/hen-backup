@@ -16,9 +16,6 @@ def load_config():
         for name in config['repositories']:
             repository = config['repositories'][name]
             repository['name'] = name
-            repository['check'] = repository.get('check')
-            if repository['check']:
-                repository['check']['schedule'] = repository['check']['schedule'].split(';')
             repository['providerEnv'] = {}
             for provider_name in ['os', 'aws', 'st', 'b2', 'azure', 'google', 'rclone']:
                 if provider_name in repository:
@@ -37,6 +34,9 @@ def load_config():
             backup['excludes'] = backup['excludes'].split(',') if 'excludes' in backup else []
             backup['hostname'] = backup['hostname'] if 'hostname' in backup else config['hostname']
             backup['watch'] = False if backup.get('watch', 'false') in ['0', 'false', ''] else True
+
+        config['monitor'] = config.get('monitor', {})
+        config['monitor']['schedule'] = config['monitor']['schedule'].split(';') if 'schedule' in config['monitor'] else []
 
         config['log'] = config.get('log', {})
         config['log']['level'] = config['log'].get('level', 'info').upper()
@@ -70,13 +70,44 @@ def init_repository(repository):
     except Exception as e:
         logger.info('Unable to init ; probably already init else error ('+str(e)+')', extra={'action': 'init_repository', 'repository': repository['name'], 'status': 'failure'})
 
-def check_repository(repository):
-    logger.info('Starting check', extra={'action': 'check_repository', 'repository': repository['name'], 'status': 'starting'})
-    try:
-        call_restic(cmd='check', args=get_restic_global_opts(), env=get_restic_repository_envs(repository), logger=logger)
-        logger.info('Check ended :)', extra={'action': 'check_repository', 'repository': repository['name'], 'status': 'success'})
-    except Exception as e:
-        logger.exception('Check failed :(', extra={'action': 'check_repository', 'repository': repository['name'], 'status': 'failure'})
+def do_monitor(config):
+    logger.info('Starting monitoring', extra={'action': 'monitor', 'status': 'starting'})
+
+    monitoring = {
+        'repositories': {},
+        'backups': {}
+    }
+
+    for backup_name in config['backups']:
+        monitoring['backups'][backup_name] = {
+            'nbSnapshots': {}
+        }
+
+    for repository_name in config['repositories']:
+        repository = config['repositories'][repository_name]
+        monitoring['repositories'][repository_name] = {}
+        try:
+            call_restic(cmd='check', args=get_restic_global_opts(), env=get_restic_repository_envs(repository), logger=logger)
+            monitoring['repositories'][repository_name]['healthCheck'] = True
+        except Exception as e:
+            monitoring['repositories'][repository_name]['healthCheck'] = False
+
+        try:
+            snapshots = call_restic(cmd='snapshots', args=get_restic_global_opts(), env=get_restic_repository_envs(repository), logger=logger, json=True)['stdout']
+            monitoring['repositories'][repository_name]['nbSnapshots'] = len(snapshots)
+
+            for snapshot in snapshots:
+                backup_tag = next(tag for tag in snapshot['tags'] if tag[0:7] == 'backup-')
+                backup_name = backup_tag[7:]
+                # todo use group and after assign
+                if repository_name not in monitoring['backups'][backup_name]['nbSnapshots']:
+                    monitoring['backups'][backup_name]['nbSnapshots'][repository_name] = 0
+                monitoring['backups'][backup_name]['nbSnapshots'][repository_name] += 1
+
+        except Exception as e:
+            monitoring['repositories'][repository_name]['healthCheck'] = False
+
+    logger.info('Monitoring ended :)', extra={'action': 'monitor', 'status': 'success', 'result': monitoring})
 
 def do_backup(backup):
     logger.info('Starting backup', extra={'action': 'backup', 'backup': backup['name'], 'status': 'starting'})
@@ -109,14 +140,6 @@ logger.debug('Loaded config ' + str(config), extra={'action': 'main', 'status': 
 for repository_name in config['repositories']:
     repository = config['repositories'][repository_name]
     fn_queue.push(fn=init_repository, args=(repository, ))
-    if repository['check']:
-        schedule(
-            repository['check']['schedule'],
-            lambda repository: fn_queue.push(fn=check_repository, args=(repository, )),
-            args=(repository,),
-            runAtBegin=True,
-            scheduler=scheduler
-        )
 
 for backup_name in config['backups']:
     backup = config['backups'][backup_name]
@@ -135,6 +158,15 @@ for backup_name in config['backups']:
             lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
             args=(backup,)
         )
+
+if config['monitor']['schedule']:
+    schedule(
+        config['monitor']['schedule'],
+        lambda config: fn_queue.push(fn=do_monitor, args=(config, )),
+        args=(config,),
+        runAtBegin=True,
+        scheduler=scheduler
+    )
 
 fn_queue_runner.run()
 scheduler.run()
