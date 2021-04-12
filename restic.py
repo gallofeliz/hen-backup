@@ -1,4 +1,6 @@
-import subprocess, threading
+import subprocess, threading, signal
+
+state = {}
 
 class CallResticError(Exception):
     def __init__(self, result):
@@ -6,6 +8,11 @@ class CallResticError(Exception):
         self.message = 'Call Restic Error'
     def get_result(self):
         return self.result
+
+def kill_restic():
+    if state['proc']:
+        # shitty code but works
+        state['proc'].send_signal(signal.SIGINT)
 
 def call_restic(cmd, args, env, logger):
     cmd_parts = ["restic"] + [cmd] + args
@@ -18,6 +25,8 @@ def call_restic(cmd, args, env, logger):
         stderr=subprocess.PIPE,
         universal_newlines=True
     )
+
+    state['proc'] = proc
 
     out=[] # only last to avoid memory boooom ?
     err=[] # only last to avoid memory boooom ?
@@ -33,6 +42,8 @@ def call_restic(cmd, args, env, logger):
     threading.Thread(target=log, args=(proc.stdout, 'STDOUT', out,)).start()
     threading.Thread(target=log, args=(proc.stderr, 'STDERR', err,)).start()
     code = proc.wait()
+
+    state['proc'] = None
 
     logger.debug('EXIT ' + str(code), extra={'action': 'call_restic', 'status': 'failure' if code else 'success'})
 

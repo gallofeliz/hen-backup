@@ -6,8 +6,9 @@ from gallocloud_utils.jsonlogging import configure_logger
 from gallocloud_utils.config import load_config_from_env
 from fnqueue import FnQueue, ThreadedFnQueueRunner
 from flatten_dict import flatten
-from restic import call_restic
+from restic import call_restic, kill_restic
 from watcher import create_watch_callback
+import signal
 
 def load_config():
     def format(config):
@@ -105,6 +106,11 @@ fn_queue_runner = ThreadedFnQueueRunner(fn_queue)
 
 logger.info('Starting APP', extra={'action': 'main', 'status': 'starting'})
 logger.debug('Loaded config ' + str(config), extra={'action': 'main', 'status': 'starting'})
+
+def signal_handler(sig, frame):
+    kill_restic()
+
+signal.signal(signal.SIGTERM, signal_handler)
 
 for repository_name in config['repositories']:
     repository = config['repositories'][repository_name]
