@@ -8,7 +8,9 @@ from fnqueue import FnQueue, ThreadedFnQueueRunner
 from flatten_dict import flatten
 from restic import call_restic, kill_restic
 from watcher import create_watch_callback
+from server import create_server
 import signal
+import time
 
 def load_config():
     def format(config):
@@ -103,6 +105,30 @@ logger = configure_logger(config['log']['level'])
 scheduler = create_scheduler()
 fn_queue = FnQueue()
 fn_queue_runner = ThreadedFnQueueRunner(fn_queue)
+
+class Daemon():
+    def list_snapshots(self, repository_name, hostname, backup_name):
+        done = {'response': None}
+        def cb(response):
+            done['response'] = response
+        def do(cb):
+            logger.info('calling restic')
+            args=get_restic_global_opts()
+            if backup_name:
+                args = args + ['--tag', 'backup-' + backup_name.lower()]
+            if hostname:
+                args = args + ['--host', hostname.lower()]
+            response = call_restic(cmd='snapshots', args=args, env=get_restic_repository_envs(config['repositories'][repository_name.lower()]), logger=logger, json=True)
+            cb(response['stdout'])
+        fn_queue.push(fn=do, args=(cb,))
+        while (done['response'] == None):
+            time.sleep(1)
+        return done['response']
+    def restore_snapshot(self, repository_name, snapshot, target_path, block=True):
+        return
+
+daemon = Daemon()
+create_server(logger=logger, daemon=daemon)
 
 logger.info('Starting APP', extra={'action': 'main', 'status': 'starting'})
 logger.debug('Loaded config ' + str(config), extra={'action': 'main', 'status': 'starting'})

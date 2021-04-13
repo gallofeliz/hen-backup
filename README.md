@@ -25,6 +25,11 @@ So you can :
 
 I hope this tool will be good for me ahah
 
+## Interraction
+
+You can use the CLI client to interract with the daemon :
+- `sudo docker-compose exec backup client list-snapshots my-repository`
+
 ## Warning
 
 Even if most of the job is done by Restic (https://github.com/restic/restic), this tool is not a Restic frontend. Restic can be removed for another backup app without changing contracts or features of backuper.

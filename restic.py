@@ -1,4 +1,5 @@
 import subprocess, threading, signal
+from json import loads as json_loads
 
 state = {}
 
@@ -14,8 +15,8 @@ def kill_restic():
         # shitty code but works
         state['proc'].send_signal(signal.SIGINT)
 
-def call_restic(cmd, args, env, logger):
-    cmd_parts = ["restic"] + [cmd] + args
+def call_restic(cmd, args, env, logger, json=False):
+    cmd_parts = ["restic"] + [cmd] + args + (['--json'] if json else [])
     env = {**env, 'RESTIC_CACHE_DIR':'/tmp'}
     logger.debug('START ' + ' '.join(cmd_parts) + ' with env ' + str(env), extra={'action': 'call_restic', 'status': 'starting'})
     proc = subprocess.Popen(
@@ -49,8 +50,8 @@ def call_restic(cmd, args, env, logger):
 
     result = {
         'code': code,
-        'stdout': out,
-        'stderr': err
+        'stdout': json_loads('\n'.join(out)) if json else '\n'.join(out),
+        'stderr': '\n'.join(err)
     }
 
     if code > 0:
