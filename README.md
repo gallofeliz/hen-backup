@@ -29,6 +29,7 @@ I hope this tool will be good for me ahah
 
 You can use the CLI client to interract with the daemon :
 - `sudo docker-compose exec backup client list-snapshots my-repository`
+- `sudo docker-compose exec backup client restore-snapshot my-repository snapshot_sha`
 
 ## Warning
 

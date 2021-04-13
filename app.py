@@ -124,8 +124,20 @@ class Daemon():
         while (done['response'] == None):
             time.sleep(1)
         return done['response']
-    def restore_snapshot(self, repository_name, snapshot, target_path, block=True):
-        return
+    def restore_snapshot(self, repository_name, snapshot, target_path=None, block=True):
+        if not target_path:
+            target_path = '/'
+        def do(repository_name, snapshot, target_path):
+            repository_name = repository_name.lower()
+            logger.info('Starting restore', extra={'action': 'restore_snapshot', 'repository': repository_name, 'snapshot': snapshot, 'status': 'starting'})
+            args = [snapshot]
+            args = args + ['--target', target_path]
+            try:
+                call_restic(cmd='restore', args=args, env=get_restic_repository_envs(config['repositories'][repository_name]), logger=logger)
+                logger.info('Restore ended', extra={'action': 'restore_snapshot', 'repository': repository_name, 'snapshot': snapshot, 'status': 'success'})
+            except Exception as e:
+                logger.exception('Restore failed', extra={'action': 'restore_snapshot', 'repository': repository_name, 'snapshot': snapshot, 'status': 'failure'})
+        fn_queue.push(fn=do, args=(repository_name, snapshot, target_path,))
 
 daemon = Daemon()
 create_server(logger=logger, daemon=daemon)
