@@ -11,6 +11,7 @@ from watcher import create_watch_callback
 from server import create_server
 import signal
 import time
+from tasks import Task, TaskManager
 
 def load_config():
     def format(config):
@@ -107,23 +108,27 @@ fn_queue = FnQueue()
 fn_queue_runner = ThreadedFnQueueRunner(fn_queue)
 
 class Daemon():
+    def __init__(self):
+        self._logger = logger
+        self._task_manager = TaskManager(self._logger)
+        self._task_manager.run()
     def list_snapshots(self, repository_name, hostname, backup_name):
-        done = {'response': None}
-        def cb(response):
-            done['response'] = response
-        def do(cb):
-            logger.info('calling restic')
+        def do():
             args=get_restic_global_opts()
             if backup_name:
                 args = args + ['--tag', 'backup-' + backup_name.lower()]
             if hostname:
                 args = args + ['--host', hostname.lower()]
             response = call_restic(cmd='snapshots', args=args, env=get_restic_repository_envs(config['repositories'][repository_name.lower()]), logger=logger, json=True)
-            cb(response['stdout'])
-        fn_queue.push(fn=do, args=(cb,))
-        while (done['response'] == None):
-            time.sleep(1)
-        return done['response']
+            return response['stdout']
+
+        return self._task_manager.add_task(
+            task=Task(fn=do),
+            priority='immediate',
+            ignore_if_duplicate=False,
+            get_result=True
+        )
+
     def restore_snapshot(self, repository_name, snapshot, target_path=None, block=True):
         if not target_path:
             target_path = '/'

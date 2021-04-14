@@ -1,4 +1,4 @@
-import threading, time
+import threading
 
 class Task():
     def __init__(self, fn, args=(), kwargs={}, id=None):
@@ -11,8 +11,8 @@ class Task():
 
         self._id = id
         self._state = 'new'
-        self._event = threading.Event()
         self._result = None
+        self._event = None
 
     def get_id(self):
         return self._id
@@ -32,15 +32,19 @@ class Task():
         except Exception as e:
             self._state = 'failure'
             self._result = e
+            if not self._event:
+                raise Exception('Unhandled exception')
 
-        self._event.set()
+        if self._event:
+            self._event.set()
 
     def wait_until_ended(self):
+        self._event = threading.Event()
         self._event.wait()
 
-    def self.get_result(self):
+    def get_result(self):
         self.wait_until_ended()
-        if self._result == 'success':
+        if self._state == 'success':
             return self._result
         raise self._result
 
@@ -50,8 +54,8 @@ class TaskManager():
         self._logger = logger
         self._wait_list = None
 
-    def add_task(self, task, priority='normal', ignore_duplicate=True, get_result=False):
-        if ignore_duplicate:
+    def add_task(self, task, priority='normal', ignore_if_duplicate=True, get_result=False):
+        if ignore_if_duplicate:
             for item in self._list:
                 if item.get_id() == task.get_id():
                     return
@@ -65,7 +69,15 @@ class TaskManager():
         else:
             raise Exception('Invalid priority')
 
-        if self._wait_list and len(self_.list) != 0:
+        self._logger.info('Added task', extra={
+            'component': 'task_manager',
+            'action': 'add_task',
+            'priority': priority,
+            'queue_size': len(self._list),
+            'status': 'success'
+        })
+
+        if self._wait_list and len(self._list) != 0:
             self._wait_list.set()
 
         if get_result:
@@ -77,6 +89,14 @@ class TaskManager():
     def _routine(self):
         while True:
             task = self._get_next()
+
+            self._logger.info('Running task', extra={
+                'component': 'task_manager',
+                'action': 'run_task',
+                'queue_size': len(self._list),
+                'status': 'starting'
+            })
+
             try:
                 task.run()
             except Exception as e:
@@ -84,7 +104,8 @@ class TaskManager():
 
     def _get_next(self):
         if len(self._list) == 0:
-            self._wait_list = threading.wait()
+            self._wait_list = threading.Event()
+            self._wait_list.wait()
 
         self._wait_list = None
 
