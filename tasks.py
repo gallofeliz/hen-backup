@@ -60,12 +60,23 @@ class TaskManager():
                 if item.get_id() == task.get_id():
                     return
 
+        # Add timeout to execute on immediate (in parallel) some backup task to avoid long task freezing queue ?
+        # Can use priority on backups to manage some "urgent" backups ?
+        # Add a priority like 'alone' to not use queue place (see immediate), and timeout with next to run alone if current is too long ?
+        # For example a backup each 5 mins that allow some minutes to wait but not hours :
+        #    - immediate
+        #    - next (or priority is a timeout ?) with timeout, example priority="3m", will wait max 3m and after run alone ?
+        # Manage parallel calls, but how to control Bandwith, repository locks, CPU usage, etc ?
+
         if priority == 'normal':
             self._list.append(task)
         elif priority == 'next':
             self._list.insert(0, task)
         elif priority == 'immediate':
-            threading.Thread(target=task.run).start()
+            if len(self._list) == 0:
+                self._list.append(task)
+            else:
+                threading.Thread(target=self._run_task, args=(task,))
         else:
             raise Exception('Invalid priority')
 
@@ -86,21 +97,23 @@ class TaskManager():
     def run(self):
         threading.Thread(target=self._routine).start()
 
+    def _run_task(self, task):
+        self._logger.info('Running task', extra={
+            'component': 'task_manager',
+            'action': 'run_task',
+            'queue_size': len(self._list),
+            'status': 'starting'
+        })
+
+        try:
+            task.run()
+        except Exception as e:
+            self._logger.exception('Unexpected exception on task run')
+
     def _routine(self):
         while True:
             task = self._get_next()
-
-            self._logger.info('Running task', extra={
-                'component': 'task_manager',
-                'action': 'run_task',
-                'queue_size': len(self._list),
-                'status': 'starting'
-            })
-
-            try:
-                task.run()
-            except Exception as e:
-                self._logger.exception('Unexpected exception on task run')
+            self._run_task(task)
 
     def _get_next(self):
         if len(self._list) == 0:
