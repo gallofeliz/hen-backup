@@ -40,7 +40,7 @@ def load_config():
             backup['repositories'] = list(map(lambda name: config['repositories'][name.lower()], backup['repositories'].split(',')))
             backup['schedule'] = backup['schedule'].split(';') if 'schedule' in backup else []
             backup['excludes'] = backup['excludes'].split(',') if 'excludes' in backup else []
-            backup['hostname'] = backup['hostname'] if 'hostname' in backup else config['hostname']
+            backup['hostname'] = backup['hostname'].lower() if 'hostname' in backup else config['hostname'].lower()
             backup['watch'] = False if backup.get('watch', 'false') in ['0', 'false', ''] else True
 
         config['log'] = config.get('log', {})
@@ -89,7 +89,7 @@ def do_backup(backup):
     for repository in backup['repositories']:
         logger.info('Starting backup on repository', extra={'action': 'backup', 'backup': backup['name'], 'repository': repository['name'], 'status': 'starting'})
         try:
-            options = ['--tag', quote('backup-' + backup['name'])] + get_restic_global_opts()
+            options = ['--tag', quote('backup-' + backup['name']), '--host', backup['hostname']] + get_restic_global_opts()
             args = backup['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup['excludes']))
             call_restic(cmd='backup', args=options + args, env=get_restic_repository_envs(repository), logger=logger)
             logger.info('Backup on repository ended :)', extra={'action': 'backup', 'backup': backup['name'], 'repository': repository['name'], 'status': 'success'})

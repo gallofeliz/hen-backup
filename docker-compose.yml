@@ -24,10 +24,11 @@ services:
         - BACKUP_APP1_EXCLUDES=.git,.sync
         - BACKUP_APP1_SCHEDULE=*/15 * * * *
         - BACKUP_APP1_WATCH=true
-        - BACKUP_APP1_UPLOADLIMIT=None
-        - BACKUP_APP1_DOWNLOADLIMIT=None
-        - BACKUP_APP1_PRIORITY=next
-        - BACKUP_APP1_SET_IMMEDIATE_ON_TIMEOUT=1h
+        - BACKUP_APP1_WATCH_WAIT=1m,5m # wait 1minute of inactivity and 5m max of activity # todo
+        - BACKUP_APP1_UPLOADLIMIT=None # todo
+        - BACKUP_APP1_DOWNLOADLIMIT=None # todo
+        - BACKUP_APP1_PRIORITY=next # todo
+        - BACKUP_APP1_SET_IMMEDIATE_ON_TIMEOUT=1h # todo
 
         - UPLOADLIMIT=50K
         - DOWNLOADLIMIT=200K
