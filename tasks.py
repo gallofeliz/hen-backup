@@ -33,7 +33,7 @@ class Task():
             self._state = 'failure'
             self._result = e
             if not self._event:
-                raise Exception('Unhandled exception')
+                raise Exception('Unhandled exception detected')
 
         if self._event:
             self._event.set()

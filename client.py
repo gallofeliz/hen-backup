@@ -14,28 +14,34 @@ def cli():
 
 @click.command(name='list-snapshots')
 @click.argument('repository')
-@click.option('--backup')
-@click.option('--hostname')
+@click.option('-b', '--backup')
+@click.option('-h', '--hostname')
 def list_snapshots(repository, backup, hostname):
     snapshots = get_remote().list_snapshots(repository_name=repository, backup_name=backup, hostname=hostname)
-    data = [['Date', "Id", "Hostname", "Backup"]]
-    for snapshot in snapshots:
-        backup_name = None
-        for tag in snapshot['tags']:
-            if tag[0:7] == 'backup-':
-                backup_name = tag[7:]
-
-        data.append([snapshot['time'], snapshot['id'], snapshot['hostname'], backup_name])
-    click.echo(tabulate(data, tablefmt="github", headers="firstrow"))
+    if not len(snapshots):
+        click.echo('No snapshots')
+        return
+    click.echo(tabulate(snapshots, headers="keys", tablefmt="github"))
 
 @click.command(name='restore-snapshot')
 @click.argument('repository')
 @click.argument('snapshot')
-@click.option('--target-path')
-def restore_snapshot(repository, snapshot, target_path):
-    get_remote().restore_snapshot(repository_name=repository, snapshot=snapshot, target_path=target_path)
-    click.echo('Restore queued')
-
+@click.option('-d', '--target-path')
+@click.option('-p', '--priority', type=click.Choice(['normal', 'next', 'immediate']), default='normal')
+@click.option('-w', '--wait-done/--no-wait-done', default=False)
+#@click.option('--force-run-on-timeout')
+def restore_snapshot(repository, snapshot, target_path, priority, wait_done):
+    get_remote().restore_snapshot(
+        repository_name=repository,
+        snapshot=snapshot,
+        target_path=target_path,
+        priority=priority,
+        wait_done=wait_done
+    )
+    if wait_done:
+        click.echo('Restore ended')
+    else:
+        click.echo('Restore requested')
 
 def download_snapshot():
     #restic -r /srv/restic-repo dump latest /home/other/work > restore.tar

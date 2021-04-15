@@ -28,8 +28,8 @@ class Server(rpyc.Service):
         # except Exception as e:
         #     print(e, file=stderr)
         #     return 1
-    def restore_snapshot(self, repository_name, snapshot, target_path=None):
-        return self.__daemon.restore_snapshot(repository_name, snapshot, target_path, block=False)
+    def restore_snapshot(self, repository_name, snapshot, target_path=None, priority='normal', wait_done=False):
+        return self.__daemon.restore_snapshot(repository_name, snapshot, target_path, priority, wait_done)
 
 def create_server(logger, daemon, port=18812):
     rpc = rpyc.ThreadedServer(service=Server(logger=logger, daemon=daemon), port=port, protocol_config={'allow_all_attrs': True, "allow_public_attrs":True})

@@ -6,14 +6,34 @@ services:
       context: .
     #user: "1000"
     volumes:
-      - ./:/directory1:ro
-      - ./:/directory2:ro
-      - ./:/directory3:ro
-      - ./:/directory4:ro
-    env_file:
-      - .env
-    #environment:
+      - ./test/sources:/sources
+      - ./test/repositories:/repositories
+    # env_file:
+    #   - .env
+    environment:
         # "Schedule" keys can be cron or times (2h, 4d, 1w), and multiples values separated by ";"
+
+        - REPOSITORY_REPO1_LOCATION=/repositories/repo1
+        - REPOSITORY_REPO1_PASSWORD=cab
+
+        - HOSTNAME=rpi01
+
+        - BACKUP_APP1_REPOSITORIES=REPO1
+        - BACKUP_APP1_HOSTNAME=rpi02
+        - BACKUP_APP1_PATHS=/sources
+        - BACKUP_APP1_EXCLUDES=.git,.sync
+        - BACKUP_APP1_SCHEDULE=*/15 * * * *
+        - BACKUP_APP1_WATCH=true
+        - BACKUP_APP1_UPLOADLIMIT=None
+        - BACKUP_APP1_DOWNLOADLIMIT=None
+        - BACKUP_APP1_PRIORITY=next
+        - BACKUP_APP1_SET_IMMEDIATE_ON_TIMEOUT=1h
+
+        - UPLOADLIMIT=50K
+        - DOWNLOADLIMIT=200K
+
+        - LOG_LEVEL=debug
+
 
         # REPOSITORY_OVH-GRA_LOCATION=swift:xx:/
         # REPOSITORY_OVH-GRA_PASSWORD=abc

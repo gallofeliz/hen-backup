@@ -8,9 +8,10 @@ from fnqueue import FnQueue, ThreadedFnQueueRunner
 from flatten_dict import flatten
 from restic import call_restic, kill_restic
 from watcher import create_watch_callback
-from server import create_server
 import signal
+import rpyc
 import time
+import threading
 from tasks import Task, TaskManager
 
 def load_config():
@@ -107,29 +108,75 @@ scheduler = create_scheduler()
 fn_queue = FnQueue()
 fn_queue_runner = ThreadedFnQueueRunner(fn_queue)
 
-class Daemon():
-    def __init__(self):
-        self._logger = logger
+class Daemon(rpyc.Service):
+    def __init__(self, config):
+        self._config = config
+        self._logger = configure_logger(config['log']['level'])
         self._task_manager = TaskManager(self._logger)
         self._task_manager.run()
+        rpc = rpyc.ThreadedServer(service=self, port=18812, protocol_config={'allow_all_attrs': True, "allow_public_attrs":True})
+        threading.Thread(target=rpc.start).start()
+
     def list_snapshots(self, repository_name, hostname, backup_name):
-        def do():
-            args=get_restic_global_opts()
-            if backup_name:
-                args = args + ['--tag', 'backup-' + backup_name.lower()]
-            if hostname:
-                args = args + ['--host', hostname.lower()]
-            response = call_restic(cmd='snapshots', args=args, env=get_restic_repository_envs(config['repositories'][repository_name.lower()]), logger=logger, json=True)
-            return response['stdout']
+        self._logger.info('list_snapshots requested', extra={
+            'component': 'daemon',
+            'action': 'list_snapshots',
+            'status': 'queuing'
+        })
+
+        def do_list_snapshots():
+            self._logger.info('list_snapshots starting', extra={
+                'component': 'daemon',
+                'action': 'list_snapshots',
+                'status': 'starting'
+            })
+
+            try:
+                args=get_restic_global_opts()
+                if backup_name:
+                    args = args + ['--tag', 'backup-' + backup_name.lower()]
+                if hostname:
+                    args = args + ['--host', hostname.lower()]
+                response = call_restic(cmd='snapshots', args=args, env=get_restic_repository_envs(self._config['repositories'][repository_name.lower()]), logger=logger, json=True)
+                restic_snapshots = response['stdout']
+                snapshots = []
+
+                for raw_snapshot in restic_snapshots:
+                    _backup_name = None
+                    for tag in raw_snapshot['tags']:
+                        if tag[0:7] == 'backup-':
+                            _backup_name = tag[7:]
+                    snapshots.append({
+                        'Date': raw_snapshot['time'],
+                        'Id': raw_snapshot['id'],
+                        'Hostname': raw_snapshot['hostname'],
+                        'Backup': _backup_name
+                    })
+
+                self._logger.info('list_snapshots success', extra={
+                    'component': 'daemon',
+                    'action': 'list_snapshots',
+                    'status': 'success'
+                })
+
+                return snapshots
+            except Exception as e:
+                self._logger.info('list_snapshots failed', extra={
+                    'component': 'daemon',
+                    'action': 'list_snapshots',
+                    'status': 'failure'
+                })
+
+                raise e
 
         return self._task_manager.add_task(
-            task=Task(fn=do),
+            task=Task(fn=do_list_snapshots),
             priority='immediate',
             ignore_if_duplicate=False,
             get_result=True
         )
 
-    def restore_snapshot(self, repository_name, snapshot, target_path=None, block=True):
+    def restore_snapshot(self, repository_name, snapshot, target_path=None, priority='normal', wait_done=False):
         if not target_path:
             target_path = '/'
         def do(repository_name, snapshot, target_path):
@@ -144,8 +191,7 @@ class Daemon():
                 logger.exception('Restore failed', extra={'action': 'restore_snapshot', 'repository': repository_name, 'snapshot': snapshot, 'status': 'failure'})
         fn_queue.push(fn=do, args=(repository_name, snapshot, target_path,))
 
-daemon = Daemon()
-create_server(logger=logger, daemon=daemon)
+daemon = Daemon(config)
 
 logger.info('Starting APP', extra={'action': 'main', 'status': 'starting'})
 logger.debug('Loaded config ' + str(config), extra={'action': 'main', 'status': 'starting'})

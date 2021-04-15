@@ -1,13 +1,20 @@
 # backuper
 
-Backup daemon tool :
+Backup tool :
 - Automatic
-- Monitorable
-- Encrypted backups
+- Monitorable (logs are json and written to be collected and produce metrics to have supervision)
+- Encrypted backups (restic)
 - Multi-backups definitions (directories, schedules, etc)
 - Multi-repositories by backups
 - Various providers supported (OVH, AWS, filesystem, etc)
+- One-main-thead operations to keep control on resources usage (CPU, bandwith) and avoid locking problems ; but will come priorities to have control on the queue and be able to run some operations in parallel
 - Fiable ?
+
+Coming :
+- Bandwidth by backups/operations
+- Priorities (immediate/next/normal) by backups and operations
+- Maybe Priorities "timeout" : After a configured time, a queued backup or operation will be running immedialty
+- Keep policies to remove old backups and prune the repositories
 
 ## Use
 
@@ -29,7 +36,7 @@ I hope this tool will be good for me ahah
 
 You can use the CLI client to interract with the daemon :
 - `sudo docker-compose exec backup client list-snapshots my-repository`
-- `sudo docker-compose exec backup client restore-snapshot my-repository snapshot_sha`
+- `sudo docker-compose exec backup client restore-snapshot my-repository snapshot_sha --priority next`
 
 ## Warning
 
