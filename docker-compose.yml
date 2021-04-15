@@ -19,7 +19,6 @@ services:
         - HOSTNAME=rpi01
 
         - BACKUP_APP1_REPOSITORIES=REPO1
-        - BACKUP_APP1_HOSTNAME=rpi02
         - BACKUP_APP1_PATHS=/sources
         - BACKUP_APP1_EXCLUDES=.git,.sync
         - BACKUP_APP1_SCHEDULE=*/15 * * * *
