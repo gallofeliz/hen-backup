@@ -12,7 +12,9 @@ import signal
 import rpyc
 import time
 import threading
+import logging
 from tasks import Task, TaskManager
+import re
 
 def load_config():
     def format(config):
@@ -104,6 +106,24 @@ def do_backup(backup):
 
 config = load_config()
 logger = configure_logger(config['log']['level'])
+
+
+class PasswordMaskingFilter(logging.Filter):
+    def filter(self, record):
+        for attr in dir(record):
+            if attr[0:2] != '__' and isinstance(getattr(record, attr), str):
+                setattr(record, attr, self.sanitize(getattr(record, attr)))
+
+        return True
+
+    def sanitize(self, value):
+        value = re.sub(r"'(.*?(PASSWORD|KEY|SECRET|AUTH|TOKEN|CREDENTIAL).*?)': '([^']+)'", r"'\1': '***'", value, flags=re.IGNORECASE)
+
+        return value
+
+
+logger.getLogger().addFilter(PasswordMaskingFilter())
+
 scheduler = create_scheduler()
 fn_queue = FnQueue()
 fn_queue_runner = ThreadedFnQueueRunner(fn_queue)
