@@ -176,6 +176,16 @@ class Daemon(rpyc.Service):
             get_result=True
         )
 
+    def check_repository(self, repository_name, priority='normal'):
+        repository = config['repositories'][repository_name]
+
+        self._task_manager.add_task(
+            task=Task(fn=check_repository, args=(repository, )),
+            priority=priority,
+            ignore_if_duplicate=True,
+            get_result=False
+        )
+
     def restore_snapshot(self, repository_name, snapshot, target_path=None, priority='normal', wait_done=False):
         if not target_path:
             target_path = '/'

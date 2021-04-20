@@ -43,10 +43,22 @@ def restore_snapshot(repository, snapshot, target_path, priority, wait_done):
     else:
         click.echo('Restore requested')
 
+@click.command(name='check-repository')
+@click.argument('repository')
+@click.option('-p', '--priority', type=click.Choice(['normal', 'next', 'immediate']), default='normal')
+def check_repository(repository, priority):
+    get_remote().check_repository(
+        repository_name=repository,
+        priority=priority
+    )
+
+    click.echo('Check requested')
+
 def download_snapshot():
     #restic -r /srv/restic-repo dump latest /home/other/work > restore.tar
     pass
 
 cli.add_command(list_snapshots)
 cli.add_command(restore_snapshot)
+cli.add_command(check_repository)
 cli()
