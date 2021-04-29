@@ -1,6 +1,6 @@
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-import pathspec
+import pathspec, time, threading
 
 class WatchdogFnHandler(FileSystemEventHandler):
     def __init__(self, fn, args=(), kwargs={}, on_error=None, ignore=[]):
@@ -9,6 +9,24 @@ class WatchdogFnHandler(FileSystemEventHandler):
         self._kwargs = kwargs
         self._on_error = on_error
         self._ignore = ignore
+        self._wait_times = [5, 60]
+
+        self._pending = None
+
+    def _pending_wait(self):
+        while(True):
+            now = time.time()
+            max_time = self._pending['start_time'] + self._wait_times[1]
+            if now >= max_time:
+                break
+            wait_time = min(self._wait_times[0], max_time - now)
+            self._pending['listener'].clear()
+            listener_called = self._pending['listener'].wait(wait_time)
+            if not listener_called:
+                break
+
+        self._pending = None
+        self._call_callback()
 
     def on_any_event(self, event):
         path1 = event.src_path
@@ -20,6 +38,19 @@ class WatchdogFnHandler(FileSystemEventHandler):
         if spec.match_file(path1) and (not path2 or spec.match_file(path2)):
             return
 
+        if not self._pending:
+            self._pending = {
+                "start_time": time.time(),
+                "listener": threading.Event()
+            }
+
+            threading.Thread(target=self._pending_wait).start()
+
+            return
+
+        self._pending['listener'].set()
+
+    def _call_callback(self):
         try:
             self._fn(*self._args, **self._kwargs)
         except Exception as e:
