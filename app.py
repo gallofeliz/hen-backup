@@ -254,10 +254,10 @@ for backup_name in config['backups']:
             scheduler=scheduler
         )
     if backup['watch']:
-        # use PatternMatchingEventHandler for exludes ?
         create_watch_callback(
-            backup['paths'],
-            lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
+            paths=backup['paths'],
+            ignore=backup['excludes'],
+            fn=lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
             args=(backup,)
         )
 

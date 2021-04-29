@@ -6,7 +6,7 @@ RUN apk add --update --no-cache --virtual .tmp git \
     && pip install git+https://github.com/gallofeliz/python-gallocloud-utils \
     && apk del .tmp
 
-RUN pip install flatten-dict watchdog rpyc click tabulate
+RUN pip install flatten-dict watchdog rpyc click tabulate pathspec
 
 WORKDIR /app
 
