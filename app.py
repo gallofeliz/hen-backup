@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from shlex import quote
-from gallocloud_utils.scheduling import schedule, create_scheduler
+from gallocloud_utils.scheduling import schedule, create_scheduler, convert_to_seconds
 from gallocloud_utils.jsonlogging import configure_logger
 from gallocloud_utils.config import load_config_from_env
 from fnqueue import FnQueue, ThreadedFnQueueRunner
@@ -43,6 +43,7 @@ def load_config():
             backup['schedule'] = backup['schedule'].split(';') if 'schedule' in backup else []
             backup['excludes'] = backup['excludes'].split(',') if 'excludes' in backup else []
             backup['watch'] = False if backup.get('watch', 'false') in ['0', 'false', ''] else True
+            backup['watchwait'] = backup['watchwait'].split('-') if 'watchwait' in backup else None
 
         config['hostname'] = config['hostname'].lower()
         config['log'] = config.get('log', {})
@@ -254,12 +255,13 @@ for backup_name in config['backups']:
             scheduler=scheduler
         )
     if backup['watch']:
-        create_watch_callback(
-            paths=backup['paths'],
-            ignore=backup['excludes'],
-            fn=lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
-            args=(backup,)
-        )
+        create_watch_callback(**{
+            'paths':backup['paths'],
+            'ignore':backup['excludes'],
+            'fn':lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
+            'args':(backup,),
+            **({ 'wait_min': convert_to_seconds(backup['watchwait'][0]), 'wait_max': convert_to_seconds(backup['watchwait'][1]) } if backup['watchwait'] else {})
+        })
 
 fn_queue_runner.run()
 scheduler.run()

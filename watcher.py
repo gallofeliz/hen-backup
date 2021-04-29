@@ -3,23 +3,23 @@ from watchdog.events import FileSystemEventHandler
 import pathspec, time, threading
 
 class WatchdogFnHandler(FileSystemEventHandler):
-    def __init__(self, fn, args=(), kwargs={}, on_error=None, ignore=[]):
+    def __init__(self, fn, args=(), kwargs={}, on_error=None, ignore=[], wait_min=1, wait_max=60):
         self._fn = fn
         self._args = args
         self._kwargs = kwargs
         self._on_error = on_error
         self._ignore = ignore
-        self._wait_times = [5, 60]
-
+        self._wait_min = wait_min
+        self._wait_max = wait_max
         self._pending = None
 
     def _pending_wait(self):
         while(True):
             now = time.time()
-            max_time = self._pending['start_time'] + self._wait_times[1]
+            max_time = self._pending['start_time'] + self._wait_max
             if now >= max_time:
                 break
-            wait_time = min(self._wait_times[0], max_time - now)
+            wait_time = min(self._wait_min, max_time - now)
             self._pending['listener'].clear()
             listener_called = self._pending['listener'].wait(wait_time)
             if not listener_called:
@@ -59,9 +59,9 @@ class WatchdogFnHandler(FileSystemEventHandler):
             else:
                 raise e
 
-def create_watch_callback(paths, fn, args=(), kwargs={}, on_error=None, ignore=[]):
+def create_watch_callback(paths, fn, args=(), kwargs={}, on_error=None, ignore=[], wait_min=1, wait_max=60):
     observer = Observer()
-    handler = WatchdogFnHandler(fn, args, kwargs, on_error, ignore)
+    handler = WatchdogFnHandler(fn, args, kwargs, on_error, ignore, wait_min=wait_min, wait_max=wait_max)
     for path in paths:
         observer.schedule(handler, path, recursive=True)
     observer.start()
