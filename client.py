@@ -17,7 +17,11 @@ def cli():
 @click.option('-b', '--backup')
 @click.option('-h', '--hostname')
 def list_snapshots(repository, backup, hostname):
-    snapshots = get_remote().list_snapshots(repository_name=repository, backup_name=backup, hostname=hostname)
+    snapshots = get_remote().list_snapshots(
+        repository_name=repository.lower(),
+        backup_name=backup.lower() if backup else backup,
+        hostname=hostname.lower() if hostname else hostname
+    )
     if not len(snapshots):
         click.echo('No snapshots')
         return
@@ -32,7 +36,7 @@ def list_snapshots(repository, backup, hostname):
 #@click.option('--force-run-on-timeout')
 def restore_snapshot(repository, snapshot, target_path, priority, wait_done):
     get_remote().restore_snapshot(
-        repository_name=repository,
+        repository_name=repository.lower(),
         snapshot=snapshot,
         target_path=target_path,
         priority=priority,
@@ -48,7 +52,7 @@ def restore_snapshot(repository, snapshot, target_path, priority, wait_done):
 @click.option('-p', '--priority', type=click.Choice(['normal', 'next', 'immediate']), default='normal')
 def check_repository(repository, priority):
     get_remote().check_repository(
-        repository_name=repository,
+        repository_name=repository.lower(),
         priority=priority
     )
 
