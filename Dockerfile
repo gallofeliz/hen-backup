@@ -2,7 +2,7 @@ FROM python:3.8-alpine3.12
 
 RUN apk add --no-cache restic && restic self-update
 
-RUN pip install flatten-dict watchdog rpyc click tabulate pathspec
+RUN pip install flatten-dict rpyc click tabulate
 
 RUN apk add --update --no-cache --virtual .tmp git \
     && pip install git+https://github.com/gallofeliz/python-gallocloud-utils \
@@ -10,7 +10,7 @@ RUN apk add --update --no-cache --virtual .tmp git \
 
 WORKDIR /app
 
-ADD app.py restic.py fnqueue.py fswatcher.py client.py tasks.py ./
+ADD app.py restic.py fnqueue.py client.py tasks.py ./
 
 RUN chmod +x client.py && ln -s /app/client.py /bin/client
 

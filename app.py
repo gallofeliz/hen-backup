@@ -4,10 +4,10 @@ from shlex import quote
 from gallocloud_utils.scheduling import schedule, create_scheduler, convert_to_seconds
 from gallocloud_utils.jsonlogging import configure_logger
 from gallocloud_utils.config import load_config_from_env
+from gallocloud_utils.fswatcher import create_fswatch_callback
 from fnqueue import FnQueue, ThreadedFnQueueRunner
 from flatten_dict import flatten
 from restic import call_restic, kill_restic
-from fswatcher import create_fswatch_callback
 import signal
 import rpyc
 import time
