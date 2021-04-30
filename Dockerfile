@@ -10,8 +10,8 @@ RUN apk add --update --no-cache --virtual .tmp git \
 
 WORKDIR /app
 
-ADD app.py restic.py fnqueue.py client.py tasks.py ./
+ADD main.py daemon.py restic.py fnqueue.py client.py tasks.py ./
 
 RUN chmod +x client.py && ln -s /app/client.py /bin/client
 
-CMD python -u ./app.py
+CMD python -u ./main.py

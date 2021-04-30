@@ -38,6 +38,9 @@ class Task():
         if self._event:
             self._event.set()
 
+    def abort(self):
+        pass
+
     def wait_until_ended(self):
         self._event = threading.Event()
         self._event.wait()
@@ -53,6 +56,8 @@ class TaskManager():
         self._list = []
         self._logger = logger
         self._wait_list = None
+        self._started = False
+        self._running_tasks = []
 
     def add_task(self, task, priority='normal', ignore_if_duplicate=True, get_result=False):
         if ignore_if_duplicate:
@@ -95,7 +100,16 @@ class TaskManager():
             return task.get_result()
 
     def run(self):
+        self._started = True
         threading.Thread(target=self._routine).start()
+
+    def stop(self):
+        self._started = False
+        if self._wait_list:
+            self._wait_list.set()
+
+        for task in self._running_tasks:
+            threading.Thread(target=task.abort).start()
 
     def _run_task(self, task):
         self._logger.info('Running task', extra={
@@ -105,22 +119,31 @@ class TaskManager():
             'status': 'starting'
         })
 
+        self._running_tasks.append(task)
+
         try:
             task.run()
         except Exception as e:
             self._logger.exception('Unexpected exception on task run')
 
+        self._running_tasks.remove(task)
+
     def _routine(self):
         while True:
             task = self._get_next()
+            if not task and not self.started:
+                break;
             self._run_task(task)
 
     def _get_next(self):
-        if len(self._list) == 0:
+        if len(self._list) == 0 and self._started:
             self._wait_list = threading.Event()
             self._wait_list.wait()
 
         self._wait_list = None
+
+        if not self._started:
+            return
 
         # while len(self._list) == 0:
         #     time.sleep(5)
