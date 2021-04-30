@@ -7,7 +7,7 @@ from gallocloud_utils.config import load_config_from_env
 from fnqueue import FnQueue, ThreadedFnQueueRunner
 from flatten_dict import flatten
 from restic import call_restic, kill_restic
-from watcher import create_watch_callback
+from fswatcher import create_fswatch_callback
 import signal
 import rpyc
 import time
@@ -255,11 +255,12 @@ for backup_name in config['backups']:
             scheduler=scheduler
         )
     if backup['watch']:
-        create_watch_callback(**{
+        create_fswatch_callback(**{
             'paths':backup['paths'],
             'ignore':backup['excludes'],
             'fn':lambda backup: fn_queue.push(fn=do_backup, args=(backup, )),
             'args':(backup,),
+            'logger': logger,
             **({ 'wait_min': convert_to_seconds(backup['watchwait'][0]), 'wait_max': convert_to_seconds(backup['watchwait'][1]) } if backup['watchwait'] else {})
         })
 
