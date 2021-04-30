@@ -4,8 +4,8 @@ from restic import kill_all_restics, call_restic
 from gallocloud_utils.scheduling import schedule, create_scheduler
 from gallocloud_utils.convertions import convert_to_seconds, convert_to_KiB
 from gallocloud_utils.fswatcher import create_fswatch_callback
+from gallocloud_utils.tasks import Task, TaskManager
 from shlex import quote
-from tasks import Task, TaskManager
 
 class Daemon(rpyc.Service):
     def __init__(self, config, logger):
