@@ -17,7 +17,11 @@ def cli():
 @click.option('-b', '--backup')
 @click.option('-h', '--hostname')
 def list_snapshots(repository, backup, hostname):
-    snapshots = get_remote().list_snapshots(repository_name=repository.lower(), backup_name=backup.lower(), hostname=hostname.lower())
+    snapshots = get_remote().list_snapshots(
+        repository_name=repository.lower(),
+        backup_name=backup.lower() if backup else backup,
+        hostname=hostname.lower() if hostname else hostname
+    )
     if not len(snapshots):
         click.echo('No snapshots')
         return

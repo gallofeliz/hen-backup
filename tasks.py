@@ -1,7 +1,7 @@
 import threading
 
 class Task():
-    def __init__(self, fn, args=(), kwargs={}, id=None):
+    def __init__(self, fn, args=(), kwargs={}, id=None, priority='normal'):
         self._fn = fn
         self._args = args
         self._kwargs = kwargs
@@ -14,8 +14,16 @@ class Task():
         self._result = None
         self._event = None
 
+        if not priority in ['next', 'normal', 'immediate']:
+            raise Exception('Invalid priority')
+
+        self._priority = priority
+
     def get_id(self):
         return self._id
+
+    def get_priority(self):
+        return self._priority
 
     def is_ended(self):
         return self._state == 'success' or self._state == 'failure'
@@ -59,7 +67,7 @@ class TaskManager():
         self._started = False
         self._running_tasks = []
 
-    def add_task(self, task, priority='normal', ignore_if_duplicate=True, get_result=False):
+    def add_task(self, task, ignore_if_duplicate=True, get_result=False):
         if ignore_if_duplicate:
             for item in self._list:
                 if item.get_id() == task.get_id():
@@ -73,10 +81,20 @@ class TaskManager():
         #    - next (or priority is a timeout ?) with timeout, example priority="3m", will wait max 3m and after run alone ?
         # Manage parallel calls, but how to control Bandwith, repository locks, CPU usage, etc ?
 
+        priority = task.get_priority()
+
         if priority == 'normal':
             self._list.append(task)
         elif priority == 'next':
-            self._list.insert(0, task)
+            index = 0
+            for ctask in self._list:
+                # Can be faster with == normal then index else after loop index = len(self._list)
+                if ctask.get_priority() != 'normal':
+                    index = self._list.index(ctask) + 1
+                else:
+                    break
+
+            self._list.insert(index, task)
         elif priority == 'immediate':
             if len(self._list) == 0:
                 self._list.append(task)

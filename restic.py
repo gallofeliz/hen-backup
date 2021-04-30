@@ -17,7 +17,7 @@ def kill_all_restics():
 def call_restic(cmd, args, env, logger, json=False):
     cmd_parts = ["restic"] + [cmd] + args + (['--json'] if json else [])
     env = {**env, 'RESTIC_CACHE_DIR':'/tmp'}
-    logger.info('START ' + ' '.join(cmd_parts) + ' with env ' + str(env), extra={'action': 'call_restic', 'status': 'starting'})
+    logger.info('START ' + ' '.join(cmd_parts) + ' with env ' + str(env), extra={'component': 'restic', 'action': 'call_restic', 'status': 'starting'})
     proc = subprocess.Popen(
         cmd_parts,
         env=env,
@@ -35,7 +35,7 @@ def call_restic(cmd, args, env, logger, json=False):
         for rline in iter(stream.readline, ''):
             line = rline.rstrip()
             if line:
-                logger.info(channel + ' ' + line, extra={'action': 'call_restic', 'status': 'running'})
+                logger.info(channel + ' ' + line, extra={'component': 'restic', 'action': 'call_restic', 'status': 'running'})
                 stack.append(line)
 
 
@@ -43,9 +43,9 @@ def call_restic(cmd, args, env, logger, json=False):
     threading.Thread(target=log, args=(proc.stderr, 'STDERR', err,)).start()
     code = proc.wait()
 
-    subprocess.remove(proc)
+    processes.remove(proc)
 
-    logger.info('EXIT ' + str(code), extra={'action': 'call_restic', 'status': 'failure' if code else 'success'})
+    logger.info('EXIT ' + str(code), extra={'component': 'restic', 'action': 'call_restic', 'status': 'failure' if code else 'success'})
 
     result = {
         'code': code,

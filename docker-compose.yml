@@ -29,7 +29,6 @@ services:
         - BACKUP_APP1_UPLOADLIMIT=None
         - BACKUP_APP1_DOWNLOADLIMIT=None
         - BACKUP_APP1_PRIORITY=next
-        - BACKUP_APP1_PRIORITY_TIMEOUT=1h # todo
 
         - UPLOADLIMIT=50K
         - DOWNLOADLIMIT=200K

@@ -5,12 +5,13 @@ RUN apk add --no-cache restic && restic self-update
 RUN pip install flatten-dict rpyc click tabulate
 
 RUN apk add --update --no-cache --virtual .tmp git \
+    && echo 4 \
     && pip install git+https://github.com/gallofeliz/python-gallocloud-utils \
     && apk del .tmp
 
 WORKDIR /app
 
-ADD main.py daemon.py restic.py fnqueue.py client.py tasks.py ./
+ADD main.py daemon.py restic.py client.py tasks.py ./
 
 RUN chmod +x client.py && ln -s /app/client.py /bin/client
 

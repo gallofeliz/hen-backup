@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 from gallocloud_utils.config import load_config_from_env
+from gallocloud_utils.jsonlogging import configure_logger
 import signal
+from daemon import Daemon
 
 def load_config():
     def format(config):

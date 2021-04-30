@@ -1,10 +1,11 @@
 import rpyc
 import threading
-from restic import kill_all_restics
+from restic import kill_all_restics, call_restic
 from gallocloud_utils.scheduling import schedule, create_scheduler
 from gallocloud_utils.convertions import convert_to_seconds, convert_to_KiB
 from gallocloud_utils.fswatcher import create_fswatch_callback
 from shlex import quote
+from tasks import Task, TaskManager
 
 class Daemon(rpyc.Service):
     def __init__(self, config, logger):
@@ -20,7 +21,7 @@ class Daemon(rpyc.Service):
         if self._started:
             return
 
-        logger.info('Starting Daemon', extra={
+        self._logger.info('Starting Daemon', extra={
             'component': 'daemon',
             'action': 'start',
             'status': 'starting'
@@ -43,9 +44,10 @@ class Daemon(rpyc.Service):
                         self.check_repository,
                         kwargs={
                             'repository_name': repository_name
-                        }
+                        },
                         runAtBegin=True,
-                        scheduler=scheduler
+                        scheduler=scheduler,
+                        on_error=self._logger.exception
                     )
                 )
 
@@ -59,9 +61,10 @@ class Daemon(rpyc.Service):
                             self.backup,
                             kwargs={
                                 'backup_name': backup_name
-                            }
+                            },
                             runAtBegin=True,
-                            scheduler=scheduler
+                            scheduler=scheduler,
+                            on_error=self._logger.exception
                         )
                     )
 
@@ -71,11 +74,11 @@ class Daemon(rpyc.Service):
                             'paths':backup['paths'],
                             'ignore':backup['excludes'],
                             'fn': self.backup,
-                            'args':(backup,),
                             'kwargs': {
                                 'backup_name': backup_name
-                            }
-                            'logger': logger,
+                            },
+                            'logger': self._logger,
+                            'on_error': self._logger.exception,
                             **({ 'wait_min': convert_to_seconds(backup['watchwait'][0]), 'wait_max': convert_to_seconds(backup['watchwait'][1]) } if backup['watchwait'] else {})
                         })
                     )
@@ -108,12 +111,12 @@ class Daemon(rpyc.Service):
             })
 
             try:
-                args=get_restic_global_opts()
+                args=self._get_restic_global_opts()
                 if backup_name:
                     args = args + ['--tag', 'backup-' + backup_name.lower()]
                 if hostname:
                     args = args + ['--host', hostname.lower()]
-                response = call_restic(cmd='snapshots', args=args, env=get_restic_repository_envs(self._config['repositories'][repository_name.lower()]), logger=logger, json=True)
+                response = call_restic(cmd='snapshots', args=args, env=self._get_restic_repository_envs(self._config['repositories'][repository_name.lower()]), logger=self._logger, json=True)
                 restic_snapshots = response['stdout']
                 snapshots = []
 
@@ -146,8 +149,7 @@ class Daemon(rpyc.Service):
                 raise e
 
         return self._task_manager.add_task(
-            task=Task(fn=do_list_snapshots),
-            priority=priority,
+            task=Task(fn=do_list_snapshots, priority=priority),
             ignore_if_duplicate=False,
             get_result=True
         )
@@ -163,7 +165,7 @@ class Daemon(rpyc.Service):
         })
 
         def do_init_repository():
-            logger.info('Starting repository initialization', extra={
+            self._logger.info('Starting repository initialization', extra={
                 'component': 'daemon',
                 'action': 'init_repository',
                 'repository': repository['name'],
@@ -171,15 +173,15 @@ class Daemon(rpyc.Service):
             })
 
             try:
-                call_restic(cmd='init', args=self._get_restic_global_opts(), env=self._get_restic_repository_envs(repository), logger=logger)
-                logger.info('Initialization ended :)', extra={
+                call_restic(cmd='init', args=self._get_restic_global_opts(), env=self._get_restic_repository_envs(repository), logger=self._logger)
+                self._logger.info('Initialization ended :)', extra={
                     'component': 'daemon',
                     'action': 'init_repository',
                     'repository': repository['name'],
                     'status': 'success'
                 })
             except Exception as e:
-                logger.info('Unable to init ; probably already init else error ('+str(e)+')', extra={
+                self._logger.info('Unable to init ; probably already init else error ('+str(e)+')', extra={
                     'component': 'daemon',
                     'action': 'init_repository',
                     'repository': repository['name'],
@@ -187,8 +189,7 @@ class Daemon(rpyc.Service):
                 })
 
         return self._task_manager.add_task(
-            task=Task(fn=init_repository),
-            priority=priority,
+            task=Task(fn=do_init_repository, priority=priority),
             ignore_if_duplicate=True,
             get_result=False
         )
@@ -207,22 +208,22 @@ class Daemon(rpyc.Service):
             priority = repository.get('check', {}).get('priority', 'normal')
 
         def do_check_repository():
-            logger.info('Starting check', extra={
+            self._logger.info('Starting check', extra={
                 'component': 'daemon',
                 'action': 'check_repository',
                 'repository': repository['name'],
                 'status': 'starting'
             })
             try:
-                call_restic(cmd='check', args=self._get_restic_global_opts(), env=self._get_restic_repository_envs(repository), logger=logger)
-                logger.info('Check ended :)', extra={
+                call_restic(cmd='check', args=self._get_restic_global_opts(), env=self._get_restic_repository_envs(repository), logger=self._logger)
+                self._logger.info('Check ended :)', extra={
                     'component': 'daemon',
                     'action': 'check_repository',
                     'repository': repository['name'],
                     'status': 'success'
                 })
             except Exception as e:
-                logger.exception('Check failed :(', extra={
+                self._logger.exception('Check failed :(', extra={
                     'component': 'daemon',
                     'action': 'check_repository',
                     'repository': repository['name'],
@@ -230,8 +231,7 @@ class Daemon(rpyc.Service):
                 })
 
         self._task_manager.add_task(
-            task=Task(fn=do_check_repository),
-            priority=priority,
+            task=Task(fn=do_check_repository, priority=priority),
             ignore_if_duplicate=True,
             get_result=False
         )
@@ -251,7 +251,7 @@ class Daemon(rpyc.Service):
         })
 
         def do_restore_snapshot():
-            logger.info('Starting restore', extra={
+            self._logger.info('Starting restore', extra={
                 'component': 'daemon',
                 'action': 'restore_snapshot',
                 'repository': repository_name,
@@ -262,8 +262,8 @@ class Daemon(rpyc.Service):
                 args = [snapshot]
                 args = args + ['--target', target_path]
                 args = args + self._get_restic_global_opts()
-                call_restic(cmd='restore', args=args, env=self._get_restic_repository_envs(repository), logger=logger)
-                logger.info('Restore ended', extra={
+                call_restic(cmd='restore', args=args, env=self._get_restic_repository_envs(repository), logger=self._logger)
+                self._logger.info('Restore ended', extra={
                     'component': 'daemon',
                     'action': 'restore_snapshot',
                     'repository': repository_name,
@@ -271,7 +271,7 @@ class Daemon(rpyc.Service):
                     'status': 'success'
                 })
             except Exception as e:
-                logger.exception('Restore failed', extra={
+                self._logger.exception('Restore failed', extra={
                     'component': 'daemon',
                     'action': 'restore_snapshot',
                     'repository': repository_name,
@@ -280,8 +280,7 @@ class Daemon(rpyc.Service):
                 })
 
         self._task_manager.add_task(
-            task=Task(fn=do_restore_snapshot),
-            priority=priority,
+            task=Task(fn=do_restore_snapshot, priority=priority),
             ignore_if_duplicate=True,
             get_result=False
         )
@@ -300,7 +299,7 @@ class Daemon(rpyc.Service):
             priority = backup.get('priority', 'normal')
 
         def do_backup():
-            logger.info('Starting backup', extra={
+            self._logger.info('Starting backup', extra={
                 'component': 'daemon',
                 'action': 'backup',
                 'backup': backup['name'],
@@ -308,7 +307,7 @@ class Daemon(rpyc.Service):
             })
             success = True
             for repository in backup['repositories']:
-                logger.info('Starting backup on repository', extra={
+                self._logger.info('Starting backup on repository', extra={
                     'component': 'daemon',
                     'action': 'backup',
                     'backup': backup['name'],
@@ -316,10 +315,10 @@ class Daemon(rpyc.Service):
                     'status': 'starting'
                 })
                 try:
-                    options = ['--tag', quote('backup-' + backup['name']), '--host', config['hostname']] + self.get_restic_global_opts(backup)
+                    options = ['--tag', quote('backup-' + backup['name']), '--host', self._config['hostname']] + self._get_restic_global_opts(backup)
                     args = backup['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup['excludes']))
-                    call_restic(cmd='backup', args=options + args, env=self.get_restic_repository_envs(repository), logger=logger)
-                    logger.info('Backup on repository ended :)', extra={
+                    call_restic(cmd='backup', args=options + args, env=self._get_restic_repository_envs(repository), logger=self._logger)
+                    self._logger.info('Backup on repository ended :)', extra={
                         'component': 'daemon',
                         'action': 'backup',
                         'backup': backup['name'],
@@ -327,7 +326,7 @@ class Daemon(rpyc.Service):
                         'status': 'success'
                     })
                 except Exception as e:
-                    logger.exception('Backup on repository failed :(', extra={
+                    self._logger.exception('Backup on repository failed :(', extra={
                         'component': 'daemon',
                         'action': 'backup',
                         'backup': backup['name'],
@@ -337,14 +336,14 @@ class Daemon(rpyc.Service):
                     success = False
 
             if success:
-                logger.info('Backup ended :)', extra={
+                self._logger.info('Backup ended :)', extra={
                     'component': 'daemon',
                     'action': 'backup',
                     'backup': backup['name'],
                     'status': 'success'
                 })
             else:
-                logger.error('Backup failed (one or more backup in repository failed) :(', extra={
+                self._logger.error('Backup failed (one or more backup in repository failed) :(', extra={
                     'component': 'daemon',
                     'action': 'backup',
                     'backup': backup['name'],
@@ -352,30 +351,29 @@ class Daemon(rpyc.Service):
                 })
 
         self._task_manager.add_task(
-            task=Task(fn=do_backup),
-            priority=priority,
+            task=Task(fn=do_backup, priority=priority),
             ignore_if_duplicate=True,
             get_result=False
         )
 
 
-    def _get_restic_repository_envs(repository):
+    def _get_restic_repository_envs(self, repository):
         return {
             'RESTIC_REPOSITORY': repository['location'],
             'RESTIC_PASSWORD': repository['password'],
             **repository['providerEnv']
         }
 
-    def _get_restic_global_opts(overrides = {}):
+    def _get_restic_global_opts(self, overrides = {}):
         options = []
         config = self._config
 
         uploadlimit = overrides.get('uploadlimit', config.get('uploadlimit'))
         downloadlimit = overrides.get('downloadlimit', config.get('downloadlimit'))
 
-        if uploadlimit:
+        if uploadlimit and uploadlimit != 'None':
             options.extend(['--limit-upload', str(convert_to_KiB(uploadlimit))])
-        if downloadlimit:
+        if downloadlimit and uploadlimit != 'None':
             options.extend(['--limit-download', str(convert_to_KiB(downloadlimit))])
         return options
 
