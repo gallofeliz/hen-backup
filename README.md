@@ -9,10 +9,11 @@ Backup tool :
 - Various providers supported (OVH, AWS, filesystem, etc)
 - One-main-thead operations to keep control on resources usage (CPU, bandwith) and avoid locking problems ; but will come priorities to have control on the queue and be able to run some operations in parallel
 - Fiable ?
-
-Coming :
 - Bandwidth by backups/operations
 - Priorities (immediate/next/normal) by backups and operations
+
+Coming :
+- Yml config ! With ability to declare repositories in a repositories section or under backups section (for ex for 1 repository for 1 backup definition)
 - Maybe Priorities "timeout" : After a configured time, a queued backup or operation will be running immedialty
 - Keep policies to remove old backups and prune the repositories
 
