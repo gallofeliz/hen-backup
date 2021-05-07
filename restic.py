@@ -35,7 +35,7 @@ def call_restic(cmd, args, env, logger, json=False):
         for rline in iter(stream.readline, ''):
             line = rline.rstrip()
             if line:
-                logger.info(channel + ' ' + line, extra={'component': 'restic', 'action': 'call_restic', 'status': 'running'})
+                logger.info(channel + ' ' + line, extra={'component': 'restic', 'action': 'call_restic', 'subaction': 'receive_output', 'status': 'running'})
                 stack.append(line)
 
 

@@ -6,6 +6,8 @@ from gallocloud_utils.convertions import convert_to_seconds, convert_to_KiB
 from gallocloud_utils.fswatcher import create_fswatch_callback
 from gallocloud_utils.tasks import Task, TaskManager
 from shlex import quote
+import requests
+from retrying import retry
 
 class Daemon(rpyc.Service):
     def __init__(self, config, logger):
@@ -285,6 +287,23 @@ class Daemon(rpyc.Service):
             get_result=False
         )
 
+    def _hook(self, hook):
+        if hook['type'] != 'http':
+            raise Exception('Only http implemented')
+
+        print(hook)
+
+        @retry(wait_exponential_multiplier=1000, wait_exponential_max=10000, stop_max_attempt_number=hook['retries'])
+        def do_hook():
+            response = requests.post(
+                hook['url'],
+                timeout=convert_to_seconds(hook['timeout']) if 'timeout' in hook else None
+            )
+
+            response.raise_for_status()
+
+        do_hook()
+
     def backup(self, backup_name, priority=None):
         backup = self._config['backups'][backup_name]
 
@@ -305,11 +324,60 @@ class Daemon(rpyc.Service):
                 'backup': backup['name'],
                 'status': 'starting'
             })
-            success = True
+
+            hook = backup['hooks']['before']
+            hook_ok = True
+            if hook:
+                # Should be good subaction ?
+                self._logger.info('Starting backup before hook', extra={
+                    'component': 'daemon',
+                    'action': 'backup',
+                    'subaction': 'run_hook',
+                    'backup': backup['name'],
+                    'hook': 'before',
+                    'status': 'starting'
+                })
+
+                try:
+                    self._hook(hook)
+
+                    self._logger.info('Success backup before hook', extra={
+                        'component': 'daemon',
+                        'action': 'backup',
+                        'subaction': 'run_hook',
+                        'backup': backup['name'],
+                        'hook': 'before',
+                        'status': 'sucess'
+                    })
+
+                except Exception as e:
+                    self._logger.exception('Failure backup before hook', extra={
+                        'component': 'daemon',
+                        'action': 'backup',
+                        'subaction': 'run_hook',
+                        'backup': backup['name'],
+                        'hook': 'before',
+                        'status': 'failure'
+                    })
+
+                    if hook['onfailure'] == 'stop':
+                        self._logger.error('Backup failed (before hook failed) :(', extra={
+                            'component': 'daemon',
+                            'action': 'backup',
+                            'backup': backup['name'],
+                            'status': 'failure'
+                        })
+                        return
+
+                    if not hook['onfailure'] == 'ignore':
+                        hook_ok = False
+
+            all_repo_ok = True
             for repository in backup['repositories']:
                 self._logger.info('Starting backup on repository', extra={
                     'component': 'daemon',
                     'action': 'backup',
+                    'subaction': 'backup_repository',
                     'backup': backup['name'],
                     'repository': repository['name'],
                     'status': 'starting'
@@ -321,6 +389,7 @@ class Daemon(rpyc.Service):
                     self._logger.info('Backup on repository ended :)', extra={
                         'component': 'daemon',
                         'action': 'backup',
+                        'subaction': 'backup_repository',
                         'backup': backup['name'],
                         'repository': repository['name'],
                         'status': 'success'
@@ -328,14 +397,15 @@ class Daemon(rpyc.Service):
                 except Exception as e:
                     self._logger.exception('Backup on repository failed :(', extra={
                         'component': 'daemon',
+                        'subaction': 'backup_repository',
                         'action': 'backup',
                         'backup': backup['name'],
                         'repository': repository['name'],
                         'status': 'failure'
                     })
-                    success = False
+                    all_repo_ok = False
 
-            if success:
+            if all_repo_ok and hook_ok:
                 self._logger.info('Backup ended :)', extra={
                     'component': 'daemon',
                     'action': 'backup',
@@ -343,7 +413,7 @@ class Daemon(rpyc.Service):
                     'status': 'success'
                 })
             else:
-                self._logger.error('Backup failed (one or more backup in repository failed) :(', extra={
+                self._logger.error('Backup failed (hook or backup in repository failed) :(', extra={
                     'component': 'daemon',
                     'action': 'backup',
                     'backup': backup['name'],

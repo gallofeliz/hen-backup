@@ -34,6 +34,22 @@ def load_config():
             backup['watch'] = False if backup.get('watch', 'false') in ['0', 'false', ''] else True
             backup['watchwait'] = backup['watchwait'].split('-') if 'watchwait' in backup else None
 
+            if 'hooks' not in backup:
+                backup['hooks'] = {}
+
+            if 'before' not in backup['hooks']:
+                backup['hooks']['before'] = None
+
+            if 'after' not in backup['hooks']:
+                backup['hooks']['after'] = None
+
+            if backup['hooks']['before']:
+                hook = backup['hooks']['before']
+                hook['onfailure'] = hook.get('onfailure', 'stop') # ignore, stop, continue
+                if hook['onfailure'] not in ['ignore', 'continue', 'stop']:
+                    raise Exception('invalid onfailure')
+                hook['retries'] = int(hook.get('retries', '0'))
+
         config['hostname'] = config['hostname'].lower()
         config['log'] = config.get('log', {})
         config['log']['level'] = config['log'].get('level', 'info').upper()

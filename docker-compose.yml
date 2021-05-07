@@ -29,6 +29,13 @@ services:
         - BACKUP_APP1_UPLOADLIMIT=None
         - BACKUP_APP1_DOWNLOADLIMIT=None
         - BACKUP_APP1_PRIORITY=next
+        - BACKUP_APP1_HOOKS_BEFORE_TYPE=http
+        - BACKUP_APP1_HOOKS_BEFORE_URL=https://wwebhook.site/883ec4ba-353f-4906-b305-be6f3f4e692e/dothejob
+        - BACKUP_APP1_HOOKS_BEFORE_TIMEOUT=1m
+        - BACKUP_APP1_HOOKS_BEFORE_RETRIES=3
+        - BACKUP_APP1_HOOKS_BEFORE_ONFAILURE=continue
+        #- BACKUP_APP1_HOOKS_BEFORE_ASYNC= put next of backup process on the queue in case of hook very long ?
+        # Add a endpoint trigger to run backup if a service call a http endpoint ?
 
         - UPLOADLIMIT=50K
         - DOWNLOADLIMIT=200K
