@@ -66,3 +66,7 @@ backups:
         onfailure: continue
         #- BACKUP_APP1_HOOKS_BEFORE_ASYNC= put next of backup process on the queue in case of hook very long ?
         # Add a endpoint trigger to run backup if a service call a http endpoint ?
+  app2:
+    repositories:
+      app2_dd:
+        location: iua

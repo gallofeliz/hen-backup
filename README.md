@@ -11,15 +11,15 @@ Backup tool :
 - Fiable ?
 - Bandwidth by backups/operations
 - Priorities (immediate/next/normal) by backups and operations
+- Yml config ! With ability to declare repositories in a repositories section or under backups section (for ex for 1 repository for 1 backup definition)
 
 Coming :
-- Yml config ! With ability to declare repositories in a repositories section or under backups section (for ex for 1 repository for 1 backup definition)
 - Maybe Priorities "timeout" : After a configured time, a queued backup or operation will be running immedialty
 - Keep policies to remove old backups and prune the repositories
 
 ## Use
 
-See docker-compose.yml
+See docker-compose.yml ane config_test.yml
 
 Notes :
 - Multiple repositories are configurable

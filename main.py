@@ -9,22 +9,32 @@ from flatten_dict import flatten
 from gallocloud_utils.yamlconfig import load_config_from_yaml
 
 def format(config):
+    if 'repositories' not in config:
+        config['repositories'] = {}
     # Migrate repositories in backups to repositories
     for backup_name in config['backups']:
         backup = config['backups'][backup_name]
         backup['name'] = backup_name
         new_repositories = []
-        for repository_name_or_object in backup['repositories']:
-            if type(repository_name_or_object) is not str:
-                name = repository_name_or_object['name']
-                if name in config['repositories']:
-                    raise Exception('Repository double : %s' % name)
-                config['repositories'][name] = repository_name_or_object
-                new_repositories.append(name)
-            else:
-                if repository_name_or_object not in config['repositories']:
-                    raise Exception('Repository %s not found' % repository_name_or_object)
-                new_repositories.append(repository_name_or_object)
+        if type(backup['repositories']) is list:
+            for repository_name_or_object in backup['repositories']:
+                if type(repository_name_or_object) is not str:
+                    name = repository_name_or_object['name']
+                    if name in config['repositories']:
+                        raise Exception('Repository double : %s' % name)
+                    config['repositories'][name] = repository_name_or_object
+                    new_repositories.append(name)
+                else:
+                    if repository_name_or_object not in config['repositories']:
+                        raise Exception('Repository %s not found' % repository_name_or_object)
+                    new_repositories.append(repository_name_or_object)
+        else:
+            for repository_name in backup['repositories']:
+                if repository_name in config['repositories']:
+                    raise Exception('Repository double : %s' % repository_name)
+                config['repositories'][repository_name] = backup['repositories'][repository_name]
+                new_repositories.append(repository_name)
+
         backup['repositories'] = new_repositories
 
     # Prepare Restic envs
@@ -45,9 +55,6 @@ def format(config):
     return config
 
 config = load_config_from_yaml(default_filepath='/etc/backuper/config.yml', format=format)
-
-import json
-
 logger = configure_logger(glom(config, 'log.level', default='info'))
 
 daemon = Daemon(config, logger)
