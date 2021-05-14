@@ -1,44 +1,36 @@
-# backuper
+# Hen-Backup
 
-Backup tool :
-- Automatic
+Hen-Backup is a backup tool designed to be automatic, complete and flexible. Its values are :
+- Automatic (Daemon)
 - Monitorable (logs are json and written to be collected and produce metrics to have supervision)
-- Encrypted backups (restic)
-- Multi-backups definitions (directories, schedules, etc)
-- Multi-repositories by backups
-- Various providers supported (OVH, AWS, filesystem, etc)
-- One-main-thead operations to keep control on resources usage (CPU, bandwith) and avoid locking problems ; but will come priorities to have control on the queue and be able to run some operations in parallel
-- Fiable ?
-- Bandwidth by backups/operations
-- Priorities (immediate/next/normal) by backups and operations
-- Yml config ! With ability to declare repositories in a repositories section or under backups section (for ex for 1 repository for 1 backup definition)
+- Encrypted
+- Unlimited backups definitions (define a backup for a database, other for your music, other for your pictures, etc)
+- Unlimited repositories definitions, for one or multi backups
+- Multi providers support (OVH, AWS, filesystem, etc)
+- Resources limitation for guys like me that have a slow internet ;) and slow computer
 
-Coming :
-- Maybe Priorities "timeout" : After a configured time, a queued backup or operation will be running immedialty
-- Keep policies to remove old backups and prune the repositories
+Backup uses Restic for operations. It's like a Restic supervisor !
 
 ## Use
 
-See docker-compose.yml ane config_test.yml
+See docker-compose.yml and config_test.yml
 
-Notes :
-- Multiple repositories are configurable
-- Multiple backups are configurable and linked to one or multiple repositories
-- Backups are schedulable by durations (ex 5m, 1h, 12h, 1d, etc), and/or cron (ex `*/15 * * * *`), and/or watching changes
+For example :
+- Configure a backup of your pictures each time they change (add, rename, delete, etc) and minimum each day. You will choose AWS Ireland because you love AWS, but what happens if the datacenter burn ? Configure a second repository for your backup ! Choose another location and why not another provider : OVH. OVH in frankfort ? So you will backup in AWS Ireland and OVH Frankfort each time you change your file.
+- Now you want to backup your grafana database. On change ? No, too often. Each hour. But wait ... The database can change and the backup is not good on an open database. You can configure a new backup for your database with a hook before : call a webservice that will dump your database every hour before your backup !
 
-So you can :
-- Define multiple backups, for example 1 for each application ; Or with NFS, one for each machine (in a network)
-- Define multiple repositories for your backup, for example 1 in OVH Paris and 1 in AWS Australia (if one is burnt...)
-- A mix of that, for example app1 backup each day in OVH Paris and each week in AWS Australia, and app2 smaller each day in both, etc
-
-I hope this tool will be good for me ahah
+Notes:
+- You can share a repository with different backups ;
+- You can add latencies to watchers to avoid to backup on the first change, and try to wait until the change ends.
+- You can define priorities (for example grafana backup can be more important than your pictures)
+- You can define bandwith limitations for each backup : grafana is very important, so should use all the bandwith, but you don't want your pictures to freeze your Netflix movie.
 
 ## Interraction
 
 You can use the CLI client to interract with the daemon :
-- `sudo docker-compose exec backup client list-snapshots my-repository`
-- `sudo docker-compose exec backup client restore-snapshot my-repository snapshot_sha --priority next`
+- `sudo docker-compose exec backup client list-snapshots ovh-frankfort -b grafana` will list all the grafana snapshots on OVH Frankfort
+- `sudo docker-compose exec backup client restore-snapshot aws-ireland-pictures snapshot_sha --priority next`
 
 ## Warning
 
-Even if most of the job is done by Restic (https://github.com/restic/restic), this tool is not a Restic frontend. Restic can be removed for another backup app without changing contracts or features of backuper.
+Even if most of the job is done by Restic (https://github.com/restic/restic), this tool is not a Restic frontend. Restic can be removed for another backup app without changing contracts or features of Hen-Backup, and some Restic logics can be overrided by mine.
