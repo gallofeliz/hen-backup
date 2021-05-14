@@ -8,6 +8,7 @@ from gallocloud_utils.tasks import Task, TaskManager
 from shlex import quote
 import requests
 from retrying import retry
+from glom import glom
 
 class Daemon(rpyc.Service):
     def __init__(self, config, logger):
@@ -39,7 +40,7 @@ class Daemon(rpyc.Service):
             repository = config['repositories'][repository_name]
             self.init_repository(repository_name)
 
-            if repository['check'].get('schedule'):
+            if 'check' in repository:
                 self._schedules.append(
                     schedule(
                         repository['check']['schedule'],
@@ -81,7 +82,10 @@ class Daemon(rpyc.Service):
                             },
                             'logger': self._logger,
                             'on_error': self._logger.exception,
-                            **({ 'wait_min': convert_to_seconds(backup['watchwait'][0]), 'wait_max': convert_to_seconds(backup['watchwait'][1]) } if backup['watchwait'] else {})
+                            **({
+                                'wait_min': convert_to_seconds(backup['watch']['wait']['min']),
+                                'wait_max': convert_to_seconds(backup['watch']['wait']['max'])
+                            } if type(backup['watch']) is not bool and backup['watch'].get('wait') else {})
                         })
                     )
 
@@ -115,10 +119,10 @@ class Daemon(rpyc.Service):
             try:
                 args=self._get_restic_global_opts()
                 if backup_name:
-                    args = args + ['--tag', 'backup-' + backup_name.lower()]
+                    args = args + ['--tag', 'backup-' + backup_name]
                 if hostname:
-                    args = args + ['--host', hostname.lower()]
-                response = call_restic(cmd='snapshots', args=args, env=self._get_restic_repository_envs(self._config['repositories'][repository_name.lower()]), logger=self._logger, json=True)
+                    args = args + ['--host', hostname]
+                response = call_restic(cmd='snapshots', args=args, env=self._get_restic_repository_envs(self._config['repositories'][repository_name]), logger=self._logger, json=True)
                 restic_snapshots = response['stdout']
                 snapshots = []
 
@@ -325,7 +329,7 @@ class Daemon(rpyc.Service):
                 'status': 'starting'
             })
 
-            hook = backup['hooks']['before']
+            hook = glom(backup, 'hooks.before', default=None)
             hook_ok = True
             if hook:
                 # Should be good subaction ?
@@ -373,7 +377,8 @@ class Daemon(rpyc.Service):
                         hook_ok = False
 
             all_repo_ok = True
-            for repository in backup['repositories']:
+            for repository_name in backup['repositories']:
+                repository = self._config['repositories'][repository_name]
                 self._logger.info('Starting backup on repository', extra={
                     'component': 'daemon',
                     'action': 'backup',
@@ -384,7 +389,7 @@ class Daemon(rpyc.Service):
                 })
                 try:
                     options = ['--tag', quote('backup-' + backup['name']), '--host', self._config['hostname']] + self._get_restic_global_opts(backup)
-                    args = backup['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup['excludes']))
+                    args = backup['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup.get('excludes', [])))
                     call_restic(cmd='backup', args=options + args, env=self._get_restic_repository_envs(repository), logger=self._logger)
                     self._logger.info('Backup on repository ended :)', extra={
                         'component': 'daemon',

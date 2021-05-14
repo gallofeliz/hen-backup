@@ -1,0 +1,68 @@
+hostname: rpi01
+
+log:
+  level: debug
+
+uploadlimit: 50K
+downloadlimit: 200K
+
+repositories:
+  global_dd:
+    location: /repositories/global
+    password: ${REPO_GLOBAL_PWD}
+    check:
+      schedule: 1d
+      priority: next
+
+backups:
+  app1:
+    repositories:
+      - global_dd
+      - name: app1_dd
+        location:  /repositories/app1
+        password: ${REPO_APP1_PWD}
+        check:
+          schedule:
+            - 6h
+            - "*/30 * * * *"
+          priority: next
+
+      - name: app1_ovh
+        location: swift:xx:/
+        password: abc
+        os:
+          auth_url: https://auth.cloud.ovh.net/v3
+          project_id: xx
+          project_name: "xx"
+          region_name: "GRA"
+          user_domain_name: "Default"
+          project_domain_id: "default"
+          username: "user-xx"
+          password: "xx"
+          identity_api_version: 3
+    paths:
+      - /sources
+    excludes:
+      - .git
+      - .sync
+      - .truc
+    schedule: "*/15 * * * *"
+    #watch: true
+    watch:
+      wait:
+        min: 5s
+        max: 30s
+    uploadlimit: ~
+    downloadlimit: ~
+    priority: next
+    #- BACKUP_APP1_PRIORITY_IMMEDIATE_AFTER=xxx ?
+    #- BACKUP_APP1_STOP_AFTER=xxx ?
+    hooks:
+      before:
+        type: http
+        url: https://wwebhook.site/883ec4ba-353f-4906-b305-be6f3f4e692e/dothejob
+        timeout: 1m
+        retries: 3
+        onfailure: continue
+        #- BACKUP_APP1_HOOKS_BEFORE_ASYNC= put next of backup process on the queue in case of hook very long ?
+        # Add a endpoint trigger to run backup if a service call a http endpoint ?

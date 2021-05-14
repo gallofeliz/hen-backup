@@ -4,60 +4,51 @@ from gallocloud_utils.config import load_config_from_env
 from gallocloud_utils.jsonlogging import configure_logger
 import signal
 from daemon import Daemon
+from glom import glom, assign
+from flatten_dict import flatten
+from gallocloud_utils.yamlconfig import load_config_from_yaml
 
-def load_config():
-    def format(config):
-        config['repositories'] = config.pop('repository')
-        config['backups'] = config.pop('backup')
-        for name in config['repositories']:
-            repository = config['repositories'][name]
-            repository['name'] = name
-            repository['check'] = repository.get('check')
-            if repository['check']:
-                repository['check']['schedule'] = repository['check']['schedule'].split(';')
-            repository['providerEnv'] = {}
-            for provider_name in ['os', 'aws', 'st', 'b2', 'azure', 'google', 'rclone']:
-                if provider_name in repository:
-                    repository['providerEnv'] = flatten(
-                        repository[provider_name],
-                        reducer=lambda k1, k2: provider_name.upper() + '_' + k2.upper() if k1 is None else k1 + '_' + k2.upper()
-                    )
-                    del repository[provider_name]
+def format(config):
+    # Migrate repositories in backups to repositories
+    for backup_name in config['backups']:
+        backup = config['backups'][backup_name]
+        backup['name'] = backup_name
+        new_repositories = []
+        for repository_name_or_object in backup['repositories']:
+            if type(repository_name_or_object) is not str:
+                name = repository_name_or_object['name']
+                if name in config['repositories']:
+                    raise Exception('Repository double : %s' % name)
+                config['repositories'][name] = repository_name_or_object
+                new_repositories.append(name)
+            else:
+                if repository_name_or_object not in config['repositories']:
+                    raise Exception('Repository %s not found' % repository_name_or_object)
+                new_repositories.append(repository_name_or_object)
+        backup['repositories'] = new_repositories
 
-        for name in config['backups']:
-            backup = config['backups'][name]
-            backup['name'] = name
-            backup['paths'] = backup['paths'].split(',')
-            backup['repositories'] = list(map(lambda name: config['repositories'][name.lower()], backup['repositories'].split(',')))
-            backup['schedule'] = backup['schedule'].split(';') if 'schedule' in backup else []
-            backup['excludes'] = backup['excludes'].split(',') if 'excludes' in backup else []
-            backup['watch'] = False if backup.get('watch', 'false') in ['0', 'false', ''] else True
-            backup['watchwait'] = backup['watchwait'].split('-') if 'watchwait' in backup else None
+    # Prepare Restic envs
+    for repository_name in config['repositories']:
+        repository = config['repositories'][repository_name]
+        repository['name'] = repository_name
+        repository['providerEnv'] = {}
+        for provider_name in ['os', 'aws', 'st', 'b2', 'azure', 'google', 'rclone']:
+            if provider_name in repository:
+                repository['providerEnv'] = flatten(
+                    repository[provider_name],
+                    reducer=lambda k1, k2: provider_name.upper() + '_' + k2.upper() if k1 is None else k1 + '_' + k2.upper()
+                )
+                for env_name in repository['providerEnv']:
+                    repository['providerEnv'][env_name] = str(repository['providerEnv'][env_name])
+                del repository[provider_name]
 
-            if 'hooks' not in backup:
-                backup['hooks'] = {}
+    return config
 
-            if 'before' not in backup['hooks']:
-                backup['hooks']['before'] = None
+config = load_config_from_yaml(default_filepath='/etc/backuper/config.yml', format=format)
 
-            if 'after' not in backup['hooks']:
-                backup['hooks']['after'] = None
+import json
 
-            if backup['hooks']['before']:
-                hook = backup['hooks']['before']
-                hook['onfailure'] = hook.get('onfailure', 'stop') # ignore, stop, continue
-                if hook['onfailure'] not in ['ignore', 'continue', 'stop']:
-                    raise Exception('invalid onfailure')
-                hook['retries'] = int(hook.get('retries', '0'))
-
-        config['hostname'] = config['hostname'].lower()
-        config['log'] = config.get('log', {})
-        config['log']['level'] = config['log'].get('level', 'info').upper()
-        return config
-    return load_config_from_env(formatter=format)
-
-config = load_config()
-logger = configure_logger(config['log']['level'])
+logger = configure_logger(glom(config, 'log.level', default='info'))
 
 daemon = Daemon(config, logger)
 
