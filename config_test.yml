@@ -3,15 +3,16 @@ hostname: rpi01
 log:
   level: debug
 
-uploadlimit: 50K
-downloadlimit: 200K
+uploadLimit: 50K
+downloadLimit: 200K
 
 repositories:
   global_dd:
     location: /repositories/global
     password: ${REPO_GLOBAL_PWD}
     check:
-      schedule: 1d
+      schedules:
+        - 1d
       priority: next
 
 backups:
@@ -22,7 +23,7 @@ backups:
         location:  /repositories/app1
         password: ${REPO_APP1_PWD}
         check:
-          schedule:
+          schedules:
             - 6h
             - "*/30 * * * *"
           priority: next
@@ -46,14 +47,15 @@ backups:
       - .git
       - .sync
       - .truc
-    schedule: "*/15 * * * *"
+    schedules:
+      - "*/15 * * * *"
     #watch: true
     watch:
       wait:
         min: 5s
         max: 30s
-    uploadlimit: ~
-    downloadlimit: ~
+    uploadLimit: ~
+    downloadLimit: ~
     priority: next
     #- BACKUP_APP1_PRIORITY_IMMEDIATE_AFTER=xxx ?
     #- BACKUP_APP1_STOP_AFTER=xxx ?

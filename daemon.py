@@ -43,7 +43,7 @@ class Daemon(rpyc.Service):
             if 'check' in repository:
                 self._schedules.append(
                     schedule(
-                        repository['check']['schedule'],
+                        repository['check']['schedules'],
                         self.check_repository,
                         kwargs={
                             'repository_name': repository_name
@@ -57,10 +57,10 @@ class Daemon(rpyc.Service):
             for backup_name in config['backups']:
                 backup = config['backups'][backup_name]
 
-                if backup['schedule']:
+                if backup.get('schedules'):
                     self._schedules.append(
                         schedule(
-                            backup['schedule'],
+                            backup['schedules'],
                             self.backup,
                             kwargs={
                                 'backup_name': backup_name
@@ -443,8 +443,8 @@ class Daemon(rpyc.Service):
         options = []
         config = self._config
 
-        uploadlimit = overrides.get('uploadlimit', config.get('uploadlimit'))
-        downloadlimit = overrides.get('downloadlimit', config.get('downloadlimit'))
+        uploadlimit = overrides.get('uploadLimit', config.get('uploadLimit'))
+        downloadlimit = overrides.get('downloadLimit', config.get('downloadLimit'))
 
         if uploadlimit and uploadlimit != 'None':
             options.extend(['--limit-upload', str(convert_to_KiB(uploadlimit))])
