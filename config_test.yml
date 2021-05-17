@@ -13,7 +13,7 @@ repositories:
     check:
       schedules:
         - 1d
-      priority: next
+      priority: inferior
 
 backups:
   app1:
@@ -26,7 +26,7 @@ backups:
           schedules:
             - 6h
             - "*/30 * * * *"
-          priority: next
+          priority: -32
 
       - name: app1_ovh
         location: swift:xx:/
@@ -56,13 +56,13 @@ backups:
         max: 30s
     uploadLimit: ~
     downloadLimit: ~
-    priority: next
+    priority: superior
     #- BACKUP_APP1_PRIORITY_IMMEDIATE_AFTER=xxx ?
     #- BACKUP_APP1_STOP_AFTER=xxx ?
     hooks:
       before:
         type: http
-        url: https://wwebhook.site/883ec4ba-353f-4906-b305-be6f3f4e692e/dothejob
+        url: https://webhook.site/ce900142-13dc-4eb0-b6e8-3a3393b582ac/dothejob
         timeout: 1m
         retries: 3
         onfailure: continue

@@ -24,6 +24,8 @@ class Daemon(rpyc.Service):
         if self._started:
             return
 
+        self._started = True
+
         self._logger.info('Starting Daemon', extra={
             'component': 'daemon',
             'action': 'start',
@@ -54,40 +56,40 @@ class Daemon(rpyc.Service):
                     )
                 )
 
-            for backup_name in config['backups']:
-                backup = config['backups'][backup_name]
+        for backup_name in config['backups']:
+            backup = config['backups'][backup_name]
 
-                if backup.get('schedules'):
-                    self._schedules.append(
-                        schedule(
-                            backup['schedules'],
-                            self.backup,
-                            kwargs={
-                                'backup_name': backup_name
-                            },
-                            runAtBegin=True,
-                            scheduler=scheduler,
-                            on_error=self._logger.exception
-                        )
+            if backup.get('schedules'):
+                self._schedules.append(
+                    schedule(
+                        backup['schedules'],
+                        self.backup,
+                        kwargs={
+                            'backup_name': backup_name
+                        },
+                        runAtBegin=True,
+                        scheduler=scheduler,
+                        on_error=self._logger.exception
                     )
+                )
 
-                if backup['watch']:
-                    self._fswatchers.append(
-                        create_fswatch_callback(**{
-                            'paths':backup['paths'],
-                            'ignore':backup['excludes'],
-                            'fn': self.backup,
-                            'kwargs': {
-                                'backup_name': backup_name
-                            },
-                            'logger': self._logger,
-                            'on_error': self._logger.exception,
-                            **({
-                                'wait_min': convert_to_seconds(backup['watch']['wait']['min']),
-                                'wait_max': convert_to_seconds(backup['watch']['wait']['max'])
-                            } if type(backup['watch']) is not bool and backup['watch'].get('wait') else {})
-                        })
-                    )
+            if backup.get('watch'):
+                self._fswatchers.append(
+                    create_fswatch_callback(**{
+                        'paths':backup['paths'],
+                        'ignore':backup['excludes'],
+                        'fn': self.backup,
+                        'kwargs': {
+                            'backup_name': backup_name
+                        },
+                        'logger': self._logger,
+                        'on_error': self._logger.exception,
+                        **({
+                            'wait_min': convert_to_seconds(backup['watch']['wait']['min']),
+                            'wait_max': convert_to_seconds(backup['watch']['wait']['max'])
+                        } if type(backup['watch']) is not bool and backup['watch'].get('wait') else {})
+                    })
+                )
 
         scheduler.run()
 
@@ -295,11 +297,9 @@ class Daemon(rpyc.Service):
         if hook['type'] != 'http':
             raise Exception('Only http implemented')
 
-        print(hook)
-
         @retry(wait_exponential_multiplier=1000, wait_exponential_max=10000, stop_max_attempt_number=hook['retries'])
         def do_hook():
-            response = requests.post(
+            response = getattr(requests, hook.get('method', 'post').lower())(
                 hook['url'],
                 timeout=convert_to_seconds(hook['timeout']) if 'timeout' in hook else None
             )
