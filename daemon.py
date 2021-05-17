@@ -197,7 +197,7 @@ class Daemon(rpyc.Service):
                 })
 
         return self._task_manager.add_task(
-            task=Task(fn=do_init_repository, priority=priority),
+            task=Task(fn=do_init_repository, priority=priority, id="init_repo_%s" % repository_name),
             ignore_if_duplicate=True,
             get_result=False
         )
@@ -239,7 +239,7 @@ class Daemon(rpyc.Service):
                 })
 
         self._task_manager.add_task(
-            task=Task(fn=do_check_repository, priority=priority),
+            task=Task(fn=do_check_repository, priority=priority, id="check_repo_%s" % repository_name),
             ignore_if_duplicate=True,
             get_result=False
         )
@@ -288,7 +288,7 @@ class Daemon(rpyc.Service):
                 })
 
         self._task_manager.add_task(
-            task=Task(fn=do_restore_snapshot, priority=priority),
+            task=Task(fn=do_restore_snapshot, priority=priority, id="restore_snap_%s_%s" % repository_name % snapshot),
             ignore_if_duplicate=True,
             get_result=False
         )
@@ -426,11 +426,10 @@ class Daemon(rpyc.Service):
                 })
 
         self._task_manager.add_task(
-            task=Task(fn=do_backup, priority=priority),
+            task=Task(fn=do_backup, priority=priority, id="backup_%s" % backup_name),
             ignore_if_duplicate=True,
             get_result=False
         )
-
 
     def _get_restic_repository_envs(self, repository):
         return {
