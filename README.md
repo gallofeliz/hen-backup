@@ -31,6 +31,15 @@ You can use the CLI client to interract with the daemon :
 - `sudo docker-compose exec backup client list-snapshots ovh-frankfort -b grafana` will list all the grafana snapshots on OVH Frankfort
 - `sudo docker-compose exec backup client restore-snapshot aws-ireland-pictures snapshot_sha --priority next`
 
+## Doc
+
+There is no doc because it is a personal project. Notes :
+- schedules are units based (5s, 5m, 5h, 5d, 5w) or cron (seconds can be controled), and multiple values are possible
+- priorities are : immediate (now), next (first position of the queue), superior, normal, inferior, on-idle (last position of the queue) or arbitrary integer (normal == 0, superior > int < inferior)
+- hook onfailure are ignore (will no impact), continue (continue the process but will be marked as failed), or break (you understand)
+- Bandwith limits are units based (50K, 50M, etc)
+- repositories are global or local. But the name is always local (add a prefix was an idea but can add confusion and/or nomenclature problems)
+
 ## Warning
 
 Even if most of the job is done by Restic (https://github.com/restic/restic), this tool is not a Restic frontend. Restic can be removed for another backup app without changing contracts or features of Hen-Backup, and some Restic logics can be overrided by mine.
