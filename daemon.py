@@ -77,7 +77,7 @@ class Daemon(rpyc.Service):
                 self._fswatchers.append(
                     create_fswatch_callback(**{
                         'paths':backup['paths'],
-                        'ignore':backup['excludes'],
+                        'ignore':backup.get('excludes', []),
                         'fn': self.backup,
                         'kwargs': {
                             'backup_name': backup_name
