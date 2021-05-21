@@ -104,7 +104,7 @@ class Daemon(rpyc.Service):
         for schedule_stop in self._schedules:
             schedule_stop()
 
-    def list_snapshots(self, repository_name, hostname, backup_name, priority='immediate'):
+    def list_snapshots(self, repository_name, hostname, backup_name, priority='immediate', sort='Date', reverse=False):
         self._logger.info('list_snapshots requested', extra={
             'component': 'daemon',
             'action': 'list_snapshots',
@@ -124,21 +124,38 @@ class Daemon(rpyc.Service):
                     args = args + ['--tag', 'backup-' + backup_name]
                 if hostname:
                     args = args + ['--host', hostname]
-                response = call_restic(cmd='snapshots', args=args, env=self._get_restic_repository_envs(self._config['repositories'][repository_name]), logger=self._logger, json=True)
-                restic_snapshots = response['stdout']
-                snapshots = []
 
-                for raw_snapshot in restic_snapshots:
-                    _backup_name = None
-                    for tag in raw_snapshot['tags']:
-                        if tag[0:7] == 'backup-':
-                            _backup_name = tag[7:]
-                    snapshots.append({
-                        'Date': raw_snapshot['time'],
-                        'Id': raw_snapshot['id'],
-                        'Hostname': raw_snapshot['hostname'],
-                        'Backup': _backup_name
-                    })
+                if repository_name:
+                    reponames_lookup = [repository_name]
+                elif backup_name:
+                    reponames_lookup = self._config['backups'][backup_name]['repositories']
+                else:
+                    reponames_lookup = self._config['repositories'].keys()
+
+                snapshots = []
+                print(reponames_lookup)
+                for repo_name in reponames_lookup:
+                    response = call_restic(
+                        cmd='snapshots',
+                        args=args,
+                        env=self._get_restic_repository_envs(self._config['repositories'][repo_name]),
+                        logger=self._logger,
+                        json=True
+                    )
+                    restic_snapshots = response['stdout']
+
+                    for raw_snapshot in restic_snapshots:
+                        _backup_name = None
+                        for tag in raw_snapshot['tags']:
+                            if tag[0:7] == 'backup-':
+                                _backup_name = tag[7:]
+                        snapshots.append({
+                            'Date': raw_snapshot['time'],
+                            'Hostname': raw_snapshot['hostname'],
+                            'Backup': _backup_name,
+                            'Repository': repo_name,
+                            'Id': raw_snapshot['id']
+                        })
 
                 self._logger.info('list_snapshots success', extra={
                     'component': 'daemon',
@@ -146,7 +163,7 @@ class Daemon(rpyc.Service):
                     'status': 'success'
                 })
 
-                return snapshots
+                return sorted(snapshots, key=lambda snapshot: snapshot[sort], reverse=reverse)
             except Exception as e:
                 self._logger.info('list_snapshots failed', extra={
                     'component': 'daemon',

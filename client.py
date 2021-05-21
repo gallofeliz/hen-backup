@@ -13,14 +13,18 @@ def cli():
     pass
 
 @click.command(name='list-snapshots')
-@click.argument('repository')
+@click.option('-r', '--repository')
 @click.option('-b', '--backup')
 @click.option('-h', '--hostname')
-def list_snapshots(repository, backup, hostname):
+@click.option('-s', '--sort', default="Date")
+@click.option('-n', '--reverse', default=False, is_flag=True)
+def list_snapshots(repository, backup, hostname, sort, reverse):
     snapshots = get_remote().list_snapshots(
-        repository_name=repository.lower(),
-        backup_name=backup.lower() if backup else backup,
-        hostname=hostname.lower() if hostname else hostname
+        repository_name=repository.lower() if repository else None,
+        backup_name=backup.lower() if backup else None,
+        hostname=hostname.lower() if hostname else None,
+        sort=sort,
+        reverse=reverse
     )
     if not len(snapshots):
         click.echo('No snapshots')
