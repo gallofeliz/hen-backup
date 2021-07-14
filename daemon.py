@@ -305,7 +305,7 @@ class Daemon(rpyc.Service):
                 })
 
         self._task_manager.add_task(
-            task=Task(fn=do_restore_snapshot, priority=priority, id="restore_snap_%s_%s" % repository_name % snapshot),
+            task=Task(fn=do_restore_snapshot, priority=priority, id="restore_snap_%s_%s" % (repository_name, snapshot)),
             ignore_if_duplicate=True,
             get_result=False
         )
@@ -325,7 +325,7 @@ class Daemon(rpyc.Service):
 
         do_hook()
 
-    def backup(self, backup_name, priority=None):
+    def backup(self, backup_name, priority=None, get_result=False):
         backup = self._config['backups'][backup_name]
 
         self._logger.info('backup requested', extra={
@@ -445,7 +445,7 @@ class Daemon(rpyc.Service):
         self._task_manager.add_task(
             task=Task(fn=do_backup, priority=priority, id="backup_%s" % backup_name),
             ignore_if_duplicate=True,
-            get_result=False
+            get_result=get_result
         )
 
     def _get_restic_repository_envs(self, repository):

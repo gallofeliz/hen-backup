@@ -43,3 +43,7 @@ There is no doc because it is a personal project. Notes :
 ## Warning
 
 Even if most of the job is done by Restic (https://github.com/restic/restic), this tool is not a Restic frontend. Restic can be removed for another backup app without changing contracts or features of Hen-Backup, and some Restic logics can be overrided by mine.
+
+## Ideas / futur devs
+- Repositories rotation (riskless prune) and cleaning (?)
+- Better handle of locks (release at end and release after inactivity)
