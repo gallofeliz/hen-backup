@@ -9,6 +9,8 @@ from shlex import quote
 import requests
 from retrying import retry
 from glom import glom
+from uuid import uuid4
+from treenodes import TreeNode
 
 class Daemon(rpyc.Service):
     def __init__(self, config, logger):
@@ -65,7 +67,8 @@ class Daemon(rpyc.Service):
                         backup['schedules'],
                         self.backup,
                         kwargs={
-                            'backup_name': backup_name
+                            'backup_name': backup_name,
+                            'caller_node': TreeNode('Daemon-schedule')
                         },
                         runAtBegin=True,
                         scheduler=scheduler,
@@ -80,7 +83,8 @@ class Daemon(rpyc.Service):
                         'ignore':backup.get('excludes', []),
                         'fn': self.backup,
                         'kwargs': {
-                            'backup_name': backup_name
+                            'backup_name': backup_name,
+                            'caller_node': TreeNode('Daemon-watch')
                         },
                         'logger': self._logger,
                         'on_error': self._logger.exception,
@@ -325,14 +329,17 @@ class Daemon(rpyc.Service):
 
         do_hook()
 
-    def backup(self, backup_name, priority=None, get_result=False):
+    def backup(self, backup_name, caller_node, priority=None, get_result=False):
         backup = self._config['backups'][backup_name]
+        id = "backup_%s" % backup_name
+        node = caller_node.extends(id)
 
         self._logger.info('backup requested', extra={
             'component': 'daemon',
             'action': 'backup',
             'backup': backup['name'],
-            'status': 'queuing'
+            'status': 'queuing',
+            'node': node
         })
 
         if not priority:
@@ -343,12 +350,14 @@ class Daemon(rpyc.Service):
                 'component': 'daemon',
                 'action': 'backup',
                 'backup': backup['name'],
-                'status': 'starting'
+                'status': 'starting',
+                'node': node
             })
 
             hook = glom(backup, 'hooks.before', default=None)
             hook_ok = True
             if hook:
+                hook_node = node.extends('hook')
                 # Should be good subaction ?
                 self._logger.info('Starting backup before hook', extra={
                     'component': 'daemon',
@@ -356,7 +365,8 @@ class Daemon(rpyc.Service):
                     'subaction': 'run_hook',
                     'backup': backup['name'],
                     'hook': 'before',
-                    'status': 'starting'
+                    'status': 'starting',
+                    'node': hook_node
                 })
 
                 try:
@@ -368,7 +378,8 @@ class Daemon(rpyc.Service):
                         'subaction': 'run_hook',
                         'backup': backup['name'],
                         'hook': 'before',
-                        'status': 'sucess'
+                        'status': 'sucess',
+                        'node': hook_node
                     })
 
                 except Exception as e:
@@ -378,7 +389,8 @@ class Daemon(rpyc.Service):
                         'subaction': 'run_hook',
                         'backup': backup['name'],
                         'hook': 'before',
-                        'status': 'failure'
+                        'status': 'failure',
+                        'node': hook_node
                     })
 
                     if hook['onfailure'] == 'stop':
@@ -386,7 +398,8 @@ class Daemon(rpyc.Service):
                             'component': 'daemon',
                             'action': 'backup',
                             'backup': backup['name'],
-                            'status': 'failure'
+                            'status': 'failure',
+                            'node': node
                         })
                         return
 
@@ -396,25 +409,28 @@ class Daemon(rpyc.Service):
             all_repo_ok = True
             for repository_name in backup['repositories']:
                 repository = self._config['repositories'][repository_name]
+                repo_node = node.extends('repository_%s' % repository['name'])
                 self._logger.info('Starting backup on repository', extra={
                     'component': 'daemon',
                     'action': 'backup',
                     'subaction': 'backup_repository',
                     'backup': backup['name'],
                     'repository': repository['name'],
-                    'status': 'starting'
+                    'status': 'starting',
+                    'node': repo_node
                 })
                 try:
                     options = ['--tag', quote('backup-' + backup['name']), '--host', self._config['hostname']] + self._get_restic_global_opts(backup)
                     args = backup['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup.get('excludes', [])))
-                    call_restic(cmd='backup', args=options + args, env=self._get_restic_repository_envs(repository), logger=self._logger)
+                    call_restic(cmd='backup', args=options + args, env=self._get_restic_repository_envs(repository), logger=self._logger, caller_node=repo_node)
                     self._logger.info('Backup on repository ended :)', extra={
                         'component': 'daemon',
                         'action': 'backup',
                         'subaction': 'backup_repository',
                         'backup': backup['name'],
                         'repository': repository['name'],
-                        'status': 'success'
+                        'status': 'success',
+                        'node': repo_node
                     })
                 except Exception as e:
                     self._logger.exception('Backup on repository failed :(', extra={
@@ -423,7 +439,8 @@ class Daemon(rpyc.Service):
                         'action': 'backup',
                         'backup': backup['name'],
                         'repository': repository['name'],
-                        'status': 'failure'
+                        'status': 'failure',
+                        'node': repo_node
                     })
                     all_repo_ok = False
 
@@ -432,14 +449,16 @@ class Daemon(rpyc.Service):
                     'component': 'daemon',
                     'action': 'backup',
                     'backup': backup['name'],
-                    'status': 'success'
+                    'status': 'success',
+                    'node': node
                 })
             else:
                 self._logger.error('Backup failed (hook or backup in repository failed) :(', extra={
                     'component': 'daemon',
                     'action': 'backup',
                     'backup': backup['name'],
-                    'status': 'failure'
+                    'status': 'failure',
+                    'node': node
                 })
 
         self._task_manager.add_task(

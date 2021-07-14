@@ -14,10 +14,14 @@ def kill_all_restics():
     for process in processes:
         process.send_signal(signal.SIGINT)
 
-def call_restic(cmd, args, env, logger, json=False):
+def call_restic(cmd, args, env, logger, json=False, caller_node=None):
+    if caller_node:
+        node = caller_node.extends('restic-%s' % cmd)
+    else:
+        node = None
     cmd_parts = ["restic"] + [cmd] + args + (['--json'] if json else [])
     env = {**env, 'RESTIC_CACHE_DIR':'/tmp'}
-    logger.info('START ' + ' '.join(cmd_parts) + ' with env ' + str(env), extra={'component': 'restic', 'action': 'call_restic', 'status': 'starting'})
+    logger.info('START ' + ' '.join(cmd_parts) + ' with env ' + str(env), extra={'component': 'restic', 'action': 'call_restic', 'status': 'starting', 'node': node})
     proc = subprocess.Popen(
         cmd_parts,
         env=env,
@@ -35,7 +39,7 @@ def call_restic(cmd, args, env, logger, json=False):
         for rline in iter(stream.readline, ''):
             line = rline.rstrip()
             if line:
-                logger.info(channel + ' ' + line, extra={'component': 'restic', 'action': 'call_restic', 'subaction': 'receive_output', 'status': 'running'})
+                logger.info(channel + ' ' + line, extra={'component': 'restic', 'action': 'call_restic', 'subaction': 'receive_output', 'status': 'running', 'node': node})
                 stack.append(line)
 
 
@@ -45,7 +49,7 @@ def call_restic(cmd, args, env, logger, json=False):
 
     processes.remove(proc)
 
-    logger.info('EXIT ' + str(code), extra={'component': 'restic', 'action': 'call_restic', 'status': 'failure' if code else 'success'})
+    logger.info('EXIT ' + str(code), extra={'component': 'restic', 'action': 'call_restic', 'status': 'failure' if code else 'success', 'node': node})
 
     result = {
         'code': code,
