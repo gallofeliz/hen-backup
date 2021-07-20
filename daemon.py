@@ -44,7 +44,7 @@ class Daemon(rpyc.Service):
             repository = config['repositories'][repository_name]
             self.init_repository(repository_name)
 
-            if 'check' in repository:
+            if 'check' in repository and 'schedules' in repository['check']:
                 self._schedules.append(
                     schedule(
                         repository['check']['schedules'],
@@ -93,6 +93,20 @@ class Daemon(rpyc.Service):
                             'wait_max': convert_to_seconds(backup['watch']['wait']['max'])
                         } if type(backup['watch']) is not bool and backup['watch'].get('wait') else {})
                     })
+                )
+
+            if backup.get('prune') and 'schedules' in backup['prune']:
+                self._schedules.append(
+                    schedule(
+                        backup['prune']['schedules'],
+                        self.prune,
+                        kwargs={
+                            'backup_name': backup_name,
+                        },
+                        runAtBegin=False,
+                        scheduler=scheduler,
+                        on_error=self._logger.exception
+                    )
                 )
 
         scheduler.run()
@@ -328,6 +342,101 @@ class Daemon(rpyc.Service):
             response.raise_for_status()
 
         do_hook()
+
+    def prune(self, backup_name, priority=None, get_result=False):
+        backup = self._config['backups'][backup_name]
+        prune = backup['prune']
+
+        if not priority:
+            priority = prune.get('priority', 'normal')
+
+        self._logger.info('prune requested', extra={
+            'component': 'daemon',
+            'action': 'prune',
+            'backup': backup['name'],
+            'status': 'queuing'
+        })
+
+        def do_prune():
+            self._logger.info('Starting prune', extra={
+                'component': 'daemon',
+                'action': 'prune',
+                'backup': backup['name'],
+                'status': 'starting'
+            })
+
+            all_repo_ok = True
+            for repository_name in backup['repositories']:
+                repository = self._config['repositories'][repository_name]
+                self._logger.info('Starting prune on repository', extra={
+                    'component': 'daemon',
+                    'action': 'prune',
+                    'subaction': 'backup_repository',
+                    'backup': backup['name'],
+                    'repository': repository['name'],
+                    'status': 'starting'
+                })
+                try:
+                    options = ['--dry-run', '--prune', '--tag', quote('backup-' + backup['name']), '--host', self._config['hostname']] + self._get_restic_global_opts(backup)
+
+                    for retention_policy_key in prune['retentionPolicy']:
+                        retention_policy_value = prune['retentionPolicy'][retention_policy_key]
+
+                        mapping = {
+                            'nbOfHourly': 'hourly',
+                            'nbOfdaily': 'daily',
+                            'nbOfWeekly': 'weekly',
+                            'nbOfMonthly': 'monthly',
+                            'nbOfYearly': 'yearly',
+                            'minTime': 'within'
+                        }
+
+                        if not retention_policy_key in mapping:
+                            raise Exception('Unknown policy rule ' + retention_policy_key)
+
+                        options.append('--keep-' + mapping[retention_policy_key])
+                        options.append(str(retention_policy_value))
+
+                    call_restic(cmd='forget', args=options, env=self._get_restic_repository_envs(repository), logger=self._logger)
+                    self._logger.info('Prune on repository ended :)', extra={
+                        'component': 'daemon',
+                        'action': 'prune',
+                        'subaction': 'backup_repository',
+                        'backup': backup['name'],
+                        'repository': repository['name'],
+                        'status': 'success'
+                    })
+                except Exception as e:
+                    self._logger.exception('Prune on repository failed :(', extra={
+                        'component': 'daemon',
+                        'subaction': 'backup_repository',
+                        'action': 'prune',
+                        'backup': backup['name'],
+                        'repository': repository['name'],
+                        'status': 'failure'
+                    })
+                    all_repo_ok = False
+
+            if all_repo_ok and hook_ok:
+                self._logger.info('Prune ended :)', extra={
+                    'component': 'daemon',
+                    'action': 'prune',
+                    'backup': backup['name'],
+                    'status': 'success'
+                })
+            else:
+                self._logger.error('Prune failed (prune in repository failed) :(', extra={
+                    'component': 'daemon',
+                    'action': 'prune',
+                    'backup': backup['name'],
+                    'status': 'failure'
+                })
+
+        self._task_manager.add_task(
+            task=Task(fn=do_prune, priority=priority, id="prune_%s" % backup_name),
+            ignore_if_duplicate=True,
+            get_result=get_result
+        )
 
     def backup(self, backup_name, caller_node, priority=None, get_result=False):
         backup = self._config['backups'][backup_name]

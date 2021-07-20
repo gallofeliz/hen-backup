@@ -57,6 +57,17 @@ backups:
     uploadLimit: ~
     downloadLimit: ~
     priority: superior
+    prune:
+      schedules:
+        - 3m
+      priority: inferior
+      retentionPolicy:
+        nbOfHourly: 24
+        nbOfdaily: 7
+        nbOfWeekly: 4
+        nbOfMonthly: 12
+        nbOfYearly: 5
+        minTime: 1h
     #- BACKUP_APP1_PRIORITY_IMMEDIATE_AFTER=xxx ?
     #- BACKUP_APP1_STOP_AFTER=xxx ?
     hooks:

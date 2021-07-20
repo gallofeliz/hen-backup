@@ -77,6 +77,17 @@ def backup(backup, priority, wait_done):
     else:
         click.echo('Backup requested')
 
+def prune(backup, priority, wait_done):
+    get_remote().prune(
+        backup_name=backup.lower(),
+        priority=priority,
+        get_result=wait_done
+    )
+    if wait_done:
+        click.echo('Prune ended')
+    else:
+        click.echo('Prune requested')
+
 
 def download_snapshot():
     #restic -r /srv/restic-repo dump latest /home/other/work > restore.tar
