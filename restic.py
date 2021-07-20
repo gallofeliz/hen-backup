@@ -1,5 +1,6 @@
 import subprocess, threading, signal
 from json import loads as json_loads
+from treenodes import TreeNode
 
 processes = []
 
@@ -18,7 +19,7 @@ def call_restic(cmd, args, env, logger, json=False, caller_node=None):
     if caller_node:
         node = caller_node.extends('restic-%s' % cmd)
     else:
-        node = None
+        node = TreeNode('restic-%s' % cmd)
     cmd_parts = ["restic"] + [cmd] + args + (['--json'] if json else [])
     env = {**env, 'RESTIC_CACHE_DIR':'/tmp'}
     logger.info('START ' + ' '.join(cmd_parts) + ' with env ' + str(env), extra={'component': 'restic', 'action': 'call_restic', 'status': 'starting', 'node': node})
@@ -41,6 +42,7 @@ def call_restic(cmd, args, env, logger, json=False, caller_node=None):
             if line:
                 logger.info(channel + ' ' + line, extra={'component': 'restic', 'action': 'call_restic', 'subaction': 'receive_output', 'status': 'running', 'node': node})
                 stack.append(line)
+        logger.info(channel + ' CLOSED', extra={'component': 'restic', 'action': 'call_restic', 'subaction': 'receive_output', 'status': 'success', 'node': node})
 
 
     threading.Thread(target=log, args=(proc.stdout, 'STDOUT', out,)).start()

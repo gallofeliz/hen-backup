@@ -379,7 +379,7 @@ class Daemon(rpyc.Service):
                 self._logger.info('Starting prune on repository', extra={
                     'component': 'daemon',
                     'action': 'prune',
-                    'subaction': 'backup_repository',
+                    'subaction': 'prune_repository',
                     'backup': backup['name'],
                     'repository': repository['name'],
                     'status': 'starting'
@@ -409,7 +409,7 @@ class Daemon(rpyc.Service):
                     self._logger.info('Prune on repository ended :)', extra={
                         'component': 'daemon',
                         'action': 'prune',
-                        'subaction': 'backup_repository',
+                        'subaction': 'prune_repository',
                         'backup': backup['name'],
                         'repository': repository['name'],
                         'status': 'success'
@@ -417,7 +417,7 @@ class Daemon(rpyc.Service):
                 except Exception as e:
                     self._logger.exception('Prune on repository failed :(', extra={
                         'component': 'daemon',
-                        'subaction': 'backup_repository',
+                        'subaction': 'prune_repository',
                         'action': 'prune',
                         'backup': backup['name'],
                         'repository': repository['name'],
@@ -425,7 +425,7 @@ class Daemon(rpyc.Service):
                     })
                     all_repo_ok = False
 
-            if all_repo_ok and hook_ok:
+            if all_repo_ok:
                 self._logger.info('Prune ended :)', extra={
                     'component': 'daemon',
                     'action': 'prune',
