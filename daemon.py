@@ -231,6 +231,14 @@ class Daemon(rpyc.Service):
                     'status': 'failure'
                 })
 
+            try:
+                # Very temporary handle of bad locks but should be good Restic does it correctly
+                # Else we have to add like fallbacks to restic to remove them. A big dev to do ...
+                # We also can exec this command before each call_restic commands (else init) with a bazooka
+                call_restic(cmd='unlock', args=self._get_restic_global_opts(), env=self._get_restic_repository_envs(repository), logger=self._logger)
+            except Exception as e:
+                pass
+
         return self._task_manager.add_task(
             task=Task(fn=do_init_repository, priority=priority, id="init_repo_%s" % repository_name),
             ignore_if_duplicate=True,
