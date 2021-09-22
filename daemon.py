@@ -153,10 +153,12 @@ class Daemon(rpyc.Service):
                 snapshots = []
                 print(reponames_lookup)
                 for repo_name in reponames_lookup:
+                    repository = self._config['repositories'][repo_name]
+                    self._unlock_repository(repository)
                     response = call_restic(
                         cmd='snapshots',
                         args=args,
-                        env=self._get_restic_repository_envs(self._config['repositories'][repo_name]),
+                        env=self._get_restic_repository_envs(repository),
                         logger=self._logger,
                         json=True
                     )
@@ -231,14 +233,7 @@ class Daemon(rpyc.Service):
                     'status': 'failure'
                 })
 
-            try:
-                # Very temporary handle of bad locks but should be good Restic does it correctly
-                # Else we have to add like fallbacks to restic to remove them. A big dev to do ...
-                # We also can exec this command before each call_restic commands (else init) with a bazooka
-                call_restic(cmd='unlock', args=self._get_restic_global_opts(), env=self._get_restic_repository_envs(repository), logger=self._logger)
-            except Exception as e:
-                pass
-
+                self._unlock_repository(repository)
         return self._task_manager.add_task(
             task=Task(fn=do_init_repository, priority=priority, id="init_repo_%s" % repository_name),
             ignore_if_duplicate=True,
@@ -266,6 +261,7 @@ class Daemon(rpyc.Service):
                 'status': 'starting'
             })
             try:
+                self._unlock_repository(repository)
                 call_restic(cmd='check', args=self._get_restic_global_opts(), env=self._get_restic_repository_envs(repository), logger=self._logger)
                 self._logger.info('Check ended :)', extra={
                     'component': 'daemon',
@@ -313,6 +309,7 @@ class Daemon(rpyc.Service):
                 args = [snapshot]
                 args = args + ['--target', target_path]
                 args = args + self._get_restic_global_opts()
+                self._unlock_repository(repository)
                 call_restic(cmd='restore', args=args, env=self._get_restic_repository_envs(repository), logger=self._logger)
                 self._logger.info('Restore ended', extra={
                     'component': 'daemon',
@@ -405,6 +402,7 @@ class Daemon(rpyc.Service):
                         options.append('--keep-' + mapping[retention_policy_key])
                         options.append(str(retention_policy_value))
 
+                    self._unlock_repository(repository)
                     call_restic(cmd='forget', args=options, env=self._get_restic_repository_envs(repository), logger=self._logger)
                     self._logger.info('Prune on repository ended :)', extra={
                         'component': 'daemon',
@@ -539,6 +537,7 @@ class Daemon(rpyc.Service):
                 try:
                     options = ['--tag', quote('backup-' + backup['name']), '--host', self._config['hostname']] + self._get_restic_global_opts(backup)
                     args = backup['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup.get('excludes', [])))
+                    self._unlock_repository(repository)
                     call_restic(cmd='backup', args=options + args, env=self._get_restic_repository_envs(repository), logger=self._logger, caller_node=repo_node)
                     self._logger.info('Backup on repository ended :)', extra={
                         'component': 'daemon',
@@ -604,3 +603,6 @@ class Daemon(rpyc.Service):
             options.extend(['--limit-download', str(convert_to_KiB(downloadlimit))])
         return options
 
+    def _unlock_repository(self, repository):
+        # TODO LOG
+        call_restic(cmd='unlock', args=self._get_restic_global_opts(), env=self._get_restic_repository_envs(repository), logger=self._logger)
