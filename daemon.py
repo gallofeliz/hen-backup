@@ -10,6 +10,7 @@ import requests
 from retrying import retry
 from glom import glom
 from uuid import uuid4
+from http_handler import HttpServer
 from treenodes import TreeNode
 
 class Daemon(rpyc.Service):
@@ -19,6 +20,7 @@ class Daemon(rpyc.Service):
         self._started = False
         self._task_manager = TaskManager(self._logger)
         self._rpc = rpyc.ThreadedServer(service=self, port=18812, protocol_config={'allow_all_attrs': True, "allow_public_attrs":True})
+        self._http_server = HttpServer(service=self, port=80)
         self._schedules = []
         self._fswatchers = []
 
@@ -36,6 +38,8 @@ class Daemon(rpyc.Service):
 
         self._task_manager.run()
         threading.Thread(target=self._rpc.start).start()
+
+        self._http_server.start()
 
         scheduler = create_scheduler()
         config = self._config
@@ -122,7 +126,25 @@ class Daemon(rpyc.Service):
         for schedule_stop in self._schedules:
             schedule_stop()
 
-    def list_snapshots(self, repository_name, hostname, backup_name, priority='immediate', sort='Date', reverse=False):
+    def get_config_summary(self):
+        summary = {
+            'hostname': self._config['hostname'],
+            'repositories': {},
+            'backups': {}
+        }
+
+        for repository_name in self._config['repositories']:
+            summary['repositories'][repository_name] = {}
+
+        for backup_name in self._config['backups']:
+            backup = self._config['backups'][backup_name]
+            summary['backups'][backup_name] = {
+                'repositories': backup['repositories']
+            }
+
+        return summary
+
+    def list_snapshots(self, repository_name=None, hostname=None, backup_name=None, priority='immediate', sort='Date', reverse=False):
         self._logger.info('list_snapshots requested', extra={
             'component': 'daemon',
             'action': 'list_snapshots',

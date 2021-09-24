@@ -44,6 +44,18 @@ There is no doc because it is a personal project. Notes :
 
 Even if most of the job is done by Restic (https://github.com/restic/restic), this tool is not a Restic frontend. Restic can be removed for another backup app without changing contracts or features of Hen-Backup, and some Restic logics can be overrided by mine.
 
-## Ideas / futur devs
-- Repositories rotation (riskless prune) and cleaning (?)
-- Better handle of locks (release at end and release after inactivity)
+## Logs refactoring
+
+- There are some triggers : scheduling, files watching, cli, ui
+- There are some tasks/actions : backup, prune, check repo, etc
+- The flow is : a trigger requests an action as task, and this task is added to a queue.
+
+It should be good to scope everything inside that. Maybe an extendable logger with "nodes" of "parent". trigger > action > subaction > restic.
+
+treenodes was a idea but I am not sure it's really the solution. Every thinks (trigger, action, etc) should have like "identity". And the base is the action/task. So the task should be linked to that, maybe the task exec should receive args like logger, I don't know.
+
+And Restic can stays a long time "frozen". Maybe should be good to have tasks and/or restic logs each x time to recorder what happens (like 5 tasks in queue, 1 running, etc).
+
+## Web UI instead of cli ?
+
+Should be user friendly :)

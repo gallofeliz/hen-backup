@@ -9,10 +9,12 @@ RUN apk add --update --no-cache --virtual .tmp git \
     && pip install git+https://github.com/gallofeliz/python-gallocloud-utils \
     && apk del .tmp
 
+RUN pip install json-rpc
+
 WORKDIR /app
 
-ADD main.py daemon.py restic.py client.py treenodes.py ./
+ADD main.py daemon.py restic.py client-cli.py treenodes.py http_handler.py ./
 
-RUN chmod +x client.py && ln -s /app/client.py /bin/client
+RUN chmod +x client-cli.py && ln -s /app/client.py /bin/cli
 
 CMD python -u ./main.py

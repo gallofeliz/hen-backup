@@ -14,3 +14,5 @@ services:
     environment:
         - REPO_GLOBAL_PWD=abc
         - REPO_APP1_PWD=cba
+    ports:
+      - "8585:80"
