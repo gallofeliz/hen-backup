@@ -14,5 +14,7 @@ services:
     environment:
         - REPO_GLOBAL_PWD=abc
         - REPO_APP1_PWD=cba
+        - REPO_APP2_PWD=bca
+        - TZ=Europe/Paris
     ports:
       - "8585:80"

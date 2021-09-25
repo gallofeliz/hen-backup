@@ -5,11 +5,15 @@ Hen-Backup is a backup tool designed to be automatic, complete and flexible. Its
 - Monitorable (logs are json and written to be collected and produce metrics to have supervision)
 - Encrypted
 - Unlimited backups definitions (define a backup for a database, other for your music, other for your pictures, etc)
-- Unlimited repositories definitions, for one or multi backups
+- Unlimited repositories definitions, for one or multi backups. Note that repositories are not redundancy. You can have redundancy with a RAID, a cloud provider, etc. Repositories are not connected and there will have n snapshots, with different dates, different ids, etc. We can imagine in the futur different rentention policies or others differences, but for that for the moment better use two backup definitions (different paths, rentention policies, etc are exactly what is a backup definition !)
 - Multi providers support (OVH, AWS, filesystem, etc)
 - Resources limitation for guys like me that have a slow internet ;) and slow computer
 
 Backup uses Restic for operations. It's like a Restic supervisor !
+
+## Limitations
+
+Currently the code doesn't use iterators, and can suffer of big amounts of data on some operations (search snapshots, get snapshot description etc). These limitations are not "in-design" and so can be fixed. However, nothing better than Restic can do can be done.
 
 ## Use
 
@@ -27,9 +31,7 @@ Notes:
 
 ## Interraction
 
-You can use the CLI client to interract with the daemon :
-- `sudo docker-compose exec backup client list-snapshots ovh-frankfort -b grafana` will list all the grafana snapshots on OVH Frankfort
-- `sudo docker-compose exec backup client restore-snapshot aws-ireland-pictures snapshot_sha --priority next`
+A WebUI can be used, and the Daemon is callable with an API to make operations. The API is the new and unique way to communicate with the Daemon.
 
 ## Doc
 

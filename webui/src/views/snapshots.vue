@@ -1,7 +1,7 @@
 <template>
   <div v-if="config">
 
-  <b-form inline>
+  <b-form inline class="mb-2">
     <label class="mr-sm-2" for="inline-form-custom-select-pref">Backup</label>
     <b-form-select
       class="mb-2 mr-sm-2 mb-sm-0"
@@ -17,14 +17,19 @@
       v-model="filterRepository"
     ></b-form-select>
 
-    <b-form-checkbox class="mb-2 mr-sm-2 mb-sm-0" v-model="filterHostname">Hostname {{config.hostname}}</b-form-checkbox>
+    <b-button class="mb-2 mr-sm-2 mb-sm-0" variant="primary" @click="search()">Show</b-button>
 
-    <b-button variant="primary" @click="search()" :disabled="loadingResults">Show</b-button>
+    <div v-if="results">
+      <span class="ml-sm-3">{{ resultsStats.count }} snapshots found</span>
+    </div>
   </b-form>
 
   <div v-if="results">
-<b-table striped hover :items="results" :fields="['Date', 'Hostname', 'Backup', 'Repository', 'Id', { key: 'actions', label: 'Actions' }]">
+    <b-table striped hover :items="results" :fields="['Date', 'Backup', 'Repository', 'Id', { key: 'actions', label: 'Actions' }]">
 
+      <template #cell(Date)="row">
+        {{ row.item.Date | formatDate }}
+      </template>
 
       <template #cell(actions)="row">
         <b-button size="sm" @click="showDetails(row.item.Repository, row.item.Id)">
@@ -32,28 +37,51 @@
         </b-button>
       </template>
 
-
-
-</b-table>
+    </b-table>
 
   </div>
+
+    <b-modal ref="my-modal" hide-footer :title="explain.title" size="xl"  >
+      <div class="d-block text-center">
+
+        <ul>
+          <li v-for="object in explain.objects" :key="object.path">
+            <pre>{{ object | describeObject }}</pre>
+          </li>
+        </ul>
+      </div>
+      <b-button class="mt-3" variant="outline-danger" block @click="hideDetails">Close</b-button>
+    </b-modal>
 
   </div>
 </template>
 
 <script>
+
+import * as moment from 'moment'
+
 export default {
   inject: ['client'],
   props: {
+  },
+  filters: {
+    describeObject(object) {
+      return JSON.stringify(object, '', 4)
+    },
+    formatDate(date) {
+      return moment(date).format()
+    }
   },
   data() {
     return {
       config: null,
       filterBackup: null,
       filterRepository: null,
-      filterHostname: false,
       results: null,
-      loadingResults: false
+      explain: {
+        title: null,
+        objects: null
+      }
     }
   },
   computed: {
@@ -66,6 +94,11 @@ export default {
       }
 
       return [{text: '', value: null}].concat(Object.keys(this.config.repositories).map(name => ({text: name, value: name })))
+    },
+    resultsStats() {
+      return {
+        count: this.results.length
+      }
     }
   },
   async created() {
@@ -78,21 +111,32 @@ export default {
       }
     },
     async search() {
-      this.loadingResults = true
       this.results = null
-      this.results = await this.client.request({method: "list_snapshots", params: {
-        repository_name: this.filterRepository,
-        hostname: this.filterHostname ? this.config.hostname : null,
-        backup_name: this.filterBackup,
-        reverse: true
+        this.results = await this.client.request({method: "list_snapshots", params: {
+          repository_name: this.filterRepository,
+          backup_name: this.filterBackup,
+          reverse: true
+        }})
+    },
+    async showDetails(repository, snapshotId) {
+
+      this.explain = await this.client.request({method: "explain_snapshot", params: {
+        repository_name: repository,
+        snapshot_id: snapshotId
       }})
-      this.loadingResults = false
+
+      this.explain.title = repository + ' ' + snapshotId
+
+      this.$refs['my-modal'].show()
+    },
+    hideDetails() {
+      this.$refs['my-modal'].hide()
+      this.explain = {
+        title: null,
+        objects: null
+      }
     }
   }
-
-
-
-
 
 }
 </script>

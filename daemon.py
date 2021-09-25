@@ -1,4 +1,3 @@
-import rpyc
 import threading
 from restic import kill_all_restics, call_restic
 from gallocloud_utils.scheduling import schedule, create_scheduler
@@ -13,14 +12,13 @@ from uuid import uuid4
 from http_handler import HttpServer
 from treenodes import TreeNode
 
-class Daemon(rpyc.Service):
+class Daemon:
     def __init__(self, config, logger):
         self._config = config
         self._logger = logger
         self._started = False
         self._task_manager = TaskManager(self._logger)
-        self._rpc = rpyc.ThreadedServer(service=self, port=18812, protocol_config={'allow_all_attrs': True, "allow_public_attrs":True})
-        self._http_server = HttpServer(service=self, port=80)
+        self._http_server = HttpServer(service=self, port=80, logger=self._logger)
         self._schedules = []
         self._fswatchers = []
 
@@ -37,9 +35,7 @@ class Daemon(rpyc.Service):
         })
 
         self._task_manager.run()
-        threading.Thread(target=self._rpc.start).start()
-
-        self._http_server.start()
+        threading.Thread(target=self._http_server.start).start()
 
         scheduler = create_scheduler()
         config = self._config
@@ -121,10 +117,17 @@ class Daemon(rpyc.Service):
 
         self._task_manager.stop()
         kill_all_restics()
-        self._rpc.close()
+        self._http_server.stop()
 
         for schedule_stop in self._schedules:
             schedule_stop()
+
+    def get_public_methods(self):
+        return [
+            'get_config_summary',
+            'list_snapshots',
+            'explain_snapshot'
+        ]
 
     def get_config_summary(self):
         summary = {
@@ -144,7 +147,7 @@ class Daemon(rpyc.Service):
 
         return summary
 
-    def list_snapshots(self, repository_name=None, hostname=None, backup_name=None, priority='immediate', sort='Date', reverse=False):
+    def list_snapshots(self, repository_name=None, backup_name=None, priority='immediate', sort='Date', reverse=False):
         self._logger.info('list_snapshots requested', extra={
             'component': 'daemon',
             'action': 'list_snapshots',
@@ -162,8 +165,7 @@ class Daemon(rpyc.Service):
                 args=self._get_restic_global_opts()
                 if backup_name:
                     args = args + ['--tag', 'backup-' + backup_name]
-                if hostname:
-                    args = args + ['--host', hostname]
+                args = args + ['--host', self._config['hostname']]
 
                 if repository_name:
                     reponames_lookup = [repository_name]
@@ -173,7 +175,6 @@ class Daemon(rpyc.Service):
                     reponames_lookup = self._config['repositories'].keys()
 
                 snapshots = []
-                print(reponames_lookup)
                 for repo_name in reponames_lookup:
                     repository = self._config['repositories'][repo_name]
                     self._unlock_repository(repository)
@@ -220,6 +221,22 @@ class Daemon(rpyc.Service):
             ignore_if_duplicate=False,
             get_result=True
         )
+    def explain_snapshot(self, repository_name, snapshot_id, priority='immediate'):
+        repository = self._config['repositories'][repository_name]
+
+        response = call_restic(
+                        cmd='ls',
+                        args=[snapshot_id],
+                        env=self._get_restic_repository_envs(repository),
+                        logger=self._logger,
+                        json=True
+                    )['stdout']
+
+
+
+        return {
+            'objects': response[1:]
+        }
 
     def init_repository(self, repository_name, priority='next'):
         repository = self._config['repositories'][repository_name]
@@ -404,7 +421,7 @@ class Daemon(rpyc.Service):
                     'status': 'starting'
                 })
                 try:
-                    options = ['--dry-run', '--prune', '--tag', quote('backup-' + backup['name']), '--host', self._config['hostname']] + self._get_restic_global_opts(backup)
+                    options = ['--prune', '--tag', quote('backup-' + backup['name']), '--host', self._config['hostname']] + self._get_restic_global_opts(backup)
 
                     for retention_policy_key in prune['retentionPolicy']:
                         retention_policy_value = prune['retentionPolicy'][retention_policy_key]

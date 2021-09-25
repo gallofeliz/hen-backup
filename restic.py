@@ -31,6 +31,10 @@ def call_restic(cmd, args, env, logger, json=False, caller_node=None):
         universal_newlines=True
     )
 
+    json_iterator=False # For next millenium, use iterator for big snapshots ?
+    if cmd == 'ls' and json == True:
+        json_iterator=True
+
     processes.append(proc)
 
     out=[] # only last to avoid memory boooom ?
@@ -53,9 +57,18 @@ def call_restic(cmd, args, env, logger, json=False, caller_node=None):
 
     logger.info('EXIT ' + str(code), extra={'component': 'restic', 'action': 'call_restic', 'status': 'failure' if code else 'success', 'node': node})
 
+    if json == True and not json_iterator:
+        stdout = json_loads('\n'.join(out))
+    elif json == True:
+        stdout = []
+        for line in out:
+            stdout.append(json_loads(line))
+    else:
+        stdout = '\n'.join(out)
+
     result = {
         'code': code,
-        'stdout': json_loads('\n'.join(out)) if json else '\n'.join(out),
+        'stdout': stdout,
         'stderr': '\n'.join(err)
     }
 
