@@ -8,7 +8,6 @@ from shlex import quote
 import requests
 from retrying import retry
 from glom import glom
-from uuid import uuid4
 from http_handler import HttpServer
 from treenodes import TreeNode
 
@@ -18,9 +17,21 @@ class Daemon:
         self._logger = logger
         self._started = False
         self._task_manager = TaskManager(self._logger)
-        self._http_server = HttpServer(service=self, port=80, logger=self._logger)
         self._schedules = []
         self._fswatchers = []
+
+        if 'api' in self._config:
+            self._http_server = HttpServer(
+                service=self,
+                method_names=[
+                    'get_config_summary',
+                    'list_snapshots',
+                    'explain_snapshot'
+                ],
+                port=self._config['api']['port'],
+                logger=self._logger,
+                credentials=self._config['api']['credentials']
+            )
 
     def start(self):
         if self._started:
@@ -35,7 +46,9 @@ class Daemon:
         })
 
         self._task_manager.run()
-        threading.Thread(target=self._http_server.start).start()
+
+        if self._http_server:
+            threading.Thread(target=self._http_server.start).start()
 
         scheduler = create_scheduler()
         config = self._config
@@ -117,17 +130,12 @@ class Daemon:
 
         self._task_manager.stop()
         kill_all_restics()
-        self._http_server.stop()
+
+        if self._http_server:
+            self._http_server.stop()
 
         for schedule_stop in self._schedules:
             schedule_stop()
-
-    def get_public_methods(self):
-        return [
-            'get_config_summary',
-            'list_snapshots',
-            'explain_snapshot'
-        ]
 
     def get_config_summary(self):
         summary = {
@@ -221,22 +229,52 @@ class Daemon:
             ignore_if_duplicate=False,
             get_result=True
         )
+
     def explain_snapshot(self, repository_name, snapshot_id, priority='immediate'):
         repository = self._config['repositories'][repository_name]
 
         response = call_restic(
                         cmd='ls',
-                        args=[snapshot_id],
+                        args=['--long', snapshot_id],
                         env=self._get_restic_repository_envs(repository),
                         logger=self._logger,
                         json=True
                     )['stdout']
 
+        objects = response[1:]
+        tags = response[0]['tags']
+        backup_name = None
 
+        for tag in tags:
+            if tag[0:7] == 'backup-':
+                backup_name = tag[7:]
+
+
+        for obj in objects:
+            obj['permissions'] = 'unknown'
 
         return {
-            'objects': response[1:]
+            'repository_name': repository_name,
+            'backup_name': backup_name,
+            'snapshot_id': snapshot_id,
+            'objects': objects
         }
+
+    def get_path_history(self, repository_name, backup_name, path, priority='immediate'):
+        #sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD= restic find --long '/sources/.truc/.machin/super.txt' --json --tag backup-xxx --host host-xxx
+        pass
+
+    def download_snapshot(self):
+        repository = self._config['repositories']['app2_dd']
+        # sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD=bca restic dump cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1 / > /tmp/prout.tar
+
+        response = call_restic(
+                        cmd='dump',
+                        args=['cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1', '/sources/.truc'],
+                        env=self._get_restic_repository_envs(repository),
+                        logger=self._logger,
+                        json=True
+                    )['stdout']
 
     def init_repository(self, repository_name, priority='next'):
         repository = self._config['repositories'][repository_name]

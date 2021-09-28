@@ -4,17 +4,15 @@ import Vue from 'vue'
 import './plugins/bootstrap-vue'
 import App from './App.vue'
 import router from './router'
-import { RequestManager, HTTPTransport, Client } from "@open-rpc/client-js";
+import * as prettyBytes from 'pretty-bytes'
+
+Vue.filter('prettyBytes', function (num) {
+  return prettyBytes(num, {binary: true});
+});
 
 Vue.config.productionTip = false
 
-const transport = new HTTPTransport("http://localhost:8585");
-const client = new Client(new RequestManager([transport]));
-
 new Vue({
   router,
-  render: h => h(App),
-  provide: {
-      client
-  }
+  render: h => h(App)
 }).$mount('#app')

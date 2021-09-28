@@ -6,6 +6,12 @@ log:
 uploadLimit: 50K
 downloadLimit: 200K
 
+api:
+  port: 8080
+  credentials:
+    username: big
+    password: boss
+
 repositories:
   global_dd:
     location: /repositories/global

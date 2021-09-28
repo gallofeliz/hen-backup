@@ -4,7 +4,7 @@ services:
     #restart: unless-stopped
     build:
       context: .
-    #user: "1000"
+    user: "nobody:1000"
     volumes:
       - ./test/sources:/sources:ro
       - ./test/repositories:/repositories
@@ -17,4 +17,4 @@ services:
         - REPO_APP2_PWD=bca
         - TZ=Europe/Paris
     ports:
-      - "8585:80"
+      - "8585:8080"

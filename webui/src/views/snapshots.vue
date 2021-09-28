@@ -41,16 +41,45 @@
 
   </div>
 
-    <b-modal ref="my-modal" hide-footer :title="explain.title" size="xl"  >
-      <div class="d-block text-center">
+    <b-modal ref="my-modal" :title="explain.title" size="xl" scrollable>
+      <div class="d-block">
 
-        <ul>
-          <li v-for="object in explain.objects" :key="object.path">
-            <pre>{{ object | describeObject }}</pre>
-          </li>
-        </ul>
+        <b-table striped hover :items="explain.objects" :fields="['path', 'permissions', 'uid', 'gid', 'size', 'mtime', { key: 'actions', label: 'Actions' }]">
+
+          <template #cell(mtime)="row">
+            {{ row.item.mtime | formatDate }}
+          </template>
+
+          <template #cell(size)="row">
+            <span v-if="row.item.size !== undefined">
+              {{ row.item.size | prettyBytes }}
+            </span>
+          </template>
+
+          <template #cell(actions)="row">
+            <b-button size="sm" @click="showDetails(row.item.Repository, row.item.Id)" disabled>
+              History
+            </b-button>
+            <b-button size="sm" disabled>
+              Restore
+            </b-button>
+            <b-button size="sm" disabled>
+              Download
+            </b-button>
+          </template>
+        </b-table>
+
       </div>
-      <b-button class="mt-3" variant="outline-danger" block @click="hideDetails">Close</b-button>
+      <template #modal-footer>
+        <div>
+          <b-button size="sm" class="mr-2" disabled>
+            Restore
+          </b-button>
+          <b-button size="sm" variant="primary" @click="downloadSnapshot()">
+            Download
+          </b-button>
+        </div>
+      </template>
     </b-modal>
 
   </div>
@@ -65,9 +94,6 @@ export default {
   props: {
   },
   filters: {
-    describeObject(object) {
-      return JSON.stringify(object, '', 4)
-    },
     formatDate(date) {
       return moment(date).format()
     }
@@ -118,6 +144,9 @@ export default {
           reverse: true
         }})
     },
+    async downloadSnapshot() {
+
+    },
     async showDetails(repository, snapshotId) {
 
       this.explain = await this.client.request({method: "explain_snapshot", params: {
@@ -125,7 +154,7 @@ export default {
         snapshot_id: snapshotId
       }})
 
-      this.explain.title = repository + ' ' + snapshotId
+      this.explain.title = `Snapshot ${this.explain.snapshot_id} of backup ${this.explain.backup_name} on repository ${this.explain.repository_name}`
 
       this.$refs['my-modal'].show()
     },

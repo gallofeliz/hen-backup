@@ -7,6 +7,7 @@ from daemon import Daemon
 from glom import glom, assign
 from flatten_dict import flatten
 from gallocloud_utils.yamlconfig import load_config_from_yaml
+from socket import gethostname
 
 def format(config):
     if 'repositories' not in config:
@@ -51,6 +52,12 @@ def format(config):
                 for env_name in repository['providerEnv']:
                     repository['providerEnv'][env_name] = str(repository['providerEnv'][env_name])
                 del repository[provider_name]
+
+    if 'hostname' not in config:
+        config['hostname'] = gethostname()
+
+    if 'api' in config:
+        config['api']['port'] = int(config['api'].get('port', '80'))
 
     return config
 

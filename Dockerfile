@@ -15,4 +15,6 @@ WORKDIR /app
 
 ADD main.py daemon.py restic.py treenodes.py http_handler.py ./
 
+USER nobody
+
 CMD python -u ./main.py

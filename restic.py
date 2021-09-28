@@ -20,7 +20,7 @@ def call_restic(cmd, args, env, logger, json=False, caller_node=None):
         node = caller_node.extends('restic-%s' % cmd)
     else:
         node = TreeNode('restic-%s' % cmd)
-    cmd_parts = ["restic"] + [cmd] + args + (['--json'] if json else [])
+    cmd_parts = ["restic", "--cleanup-cache"] + [cmd] + args + (['--json'] if json else [])
     env = {**env, 'RESTIC_CACHE_DIR':'/tmp'}
     logger.info('START ' + ' '.join(cmd_parts) + ' with env ' + str(env), extra={'component': 'restic', 'action': 'call_restic', 'status': 'starting', 'node': node})
     proc = subprocess.Popen(

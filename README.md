@@ -11,6 +11,10 @@ Hen-Backup is a backup tool designed to be automatic, complete and flexible. Its
 
 Backup uses Restic for operations. It's like a Restic supervisor !
 
+Notes : The daemon is chrooted on its hostname. Restic is used and able to do everything crazy, but globally for me it's not a very good idea to store every devices in the same repository (yes, it depends of the situation, but what I don't like it's that everybody can see everybody and delete others, especially in case of intrusion). And so, we will not develop a factory to handle external repositories, others hostname, etc. So the idea is to chroot ! If you want to manage other hostname, please call the api of its daemon, or run a daemon (todo add "readonly/recovery" mode) to operate on it.
+
+As Restic is used as tool, the "super" maintenance has to been done directly with Restic.
+
 ## Limitations
 
 Currently the code doesn't use iterators, and can suffer of big amounts of data on some operations (search snapshots, get snapshot description etc). These limitations are not "in-design" and so can be fixed. However, nothing better than Restic can do can be done.
@@ -61,3 +65,9 @@ And Restic can stays a long time "frozen". Maybe should be good to have tasks an
 ## Web UI instead of cli ?
 
 Should be user friendly :)
+
+## Ideas
+
+- Refacto with node to be simpler ?
+- Add read-only/mainteance mode to mount a backup daemon (for example server2) to fetch some infos or recovery it without making backup
+- Add in UI hightlight on backup column for unknown backup definition (+ ability to delete them)
