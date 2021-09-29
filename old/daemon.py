@@ -265,6 +265,8 @@ class Daemon:
         pass
 
     def download_snapshot(self):
+        # TODO test with node
+
         repository = self._config['repositories']['app2_dd']
         # sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD=bca restic dump cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1 / > /tmp/prout.tar
 
