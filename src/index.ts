@@ -4,7 +4,7 @@ import Daemon from './daemon'
 import Api from './api'
 
 const config = loadConfig()
-const logger = new Logger('main', config.log.level, undefined, {component: 'main'})
+const logger = new Logger('main', config.log.level)
 logger.info('Starting', { config })
 
 // Creating Daemon

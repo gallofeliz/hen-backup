@@ -12,6 +12,23 @@ export interface Config {
     log: {
         level: string
     }
+    repositories: {
+        [repositoryName: string]: {
+            name: string
+            location: string
+            password: string
+            check?: {
+                schedules: string[]
+                priority?: string
+            },
+            providerEnv: Record<string, string>
+        }
+    }
+    backups: {
+        [backupName: string]: {
+            name: string
+        }
+    }
 }
 
 export default function loadConfig(): Config {
@@ -29,56 +46,68 @@ export default function loadConfig(): Config {
 
     _.set(config, 'log.level', _.get(config, 'log.level', 'info'))
 
-    // config.repositories = _(config.repositories || {}).map((repository, repositoryName) => {
-    //     // Prepare Restic envs
+    // Migrate repositories in backups to repositories
 
-    //     repository.name = repositoryName
-    //     repository.providerEnv = {}
+    config.repositories = config.repositories || {}
 
-    //     for (const providerName of ['os', 'aws', 'st', 'b2', 'azure', 'google', 'rclone']) {
-    //         if (repository[providerName]) {
-    //             repository.providerEnv = flatten(
-    //                 repository[provider_name],
-    //                 reducer=lambda k1, k2: provider_name.upper() + '_' + k2.upper() if k1 is None else k1 + '_' + k2.upper()
-    //             )
-    //             for env_name in repository['providerEnv']:
-    //                 repository['providerEnv'][env_name] = str(repository['providerEnv'][env_name])
+    // @TODO from Python, lint it
 
-    //             delete repository[provider_name]
-    //         }
+    _.forEach(config.backups, (backup, backup_name) => {
+        backup.name = backup_name
+
+        const new_repositories: string[] = []
+
+        if (Array.isArray(backup.repositories)) {
+            backup.repositories.forEach((repository_name_or_object: any) => {
+                if (typeof(repository_name_or_object) !== 'string') {
+                    const name = repository_name_or_object['name']
+                    if (config.repositories[name]) {
+                        throw new Error('Repository double : ' + name)
+                    }
+                    config['repositories'][name] = repository_name_or_object
+                    new_repositories.push(name)
+                } else {
+                    if (!config['repositories'][repository_name_or_object]) {
+                        throw new Error('Repository ' + repository_name_or_object + ' not found')
+                    }
+                    new_repositories.push(repository_name_or_object)
+                }
+            })
+        } else {
+            Object.keys(backup['repositories']).forEach(repository_name => {
+                if (config['repositories'][repository_name]) {
+                    throw new Error('Repository double : ' + repository_name)
+                }
+                config['repositories'][repository_name] = backup['repositories'][repository_name]
+                new_repositories.push(repository_name)
+            })
+        }
+
+        backup['repositories'] = new_repositories
+    })
+
+    config.repositories = _.mapValues(config.repositories, (repository, repositoryName) => {
+        // Prepare Restic envs
+
+        repository.name = repositoryName
+        repository.providerEnv = {}
+
+        for (const providerName of ['os', 'aws', 'st', 'b2', 'azure', 'google', 'rclone']) {
 
 
-    //     }
+            if (repository[providerName]) {
+                repository.providerEnv = _.reduce(repository[providerName], (providerEnv: Record<string, string>, value: any, key: string) => {
+                    providerEnv[providerName.toUpperCase() + '_' + key.toUpperCase()] = value.toString()
 
-    //     return repository
-    // })
+                    return providerEnv
+                }, {})
 
-    // // Migrate repositories in backups to repositories
+                delete repository[providerName]
+            }
+        }
 
-    // for backup_name in config['backups']:
-    //     backup = config['backups'][backup_name]
-    //     backup['name'] = backup_name
-    //     new_repositories = []
-    //     if type(backup['repositories']) is list:
-    //         for repository_name_or_object in backup['repositories']:
-    //             if type(repository_name_or_object) is not str:
-    //                 name = repository_name_or_object['name']
-    //                 if name in config['repositories']:
-    //                     raise Exception('Repository double : %s' % name)
-    //                 config['repositories'][name] = repository_name_or_object
-    //                 new_repositories.append(name)
-    //             else:
-    //                 if repository_name_or_object not in config['repositories']:
-    //                     raise Exception('Repository %s not found' % repository_name_or_object)
-    //                 new_repositories.append(repository_name_or_object)
-    //     else:
-    //         for repository_name in backup['repositories']:
-    //             if repository_name in config['repositories']:
-    //                 raise Exception('Repository double : %s' % repository_name)
-    //             config['repositories'][repository_name] = backup['repositories'][repository_name]
-    //             new_repositories.append(repository_name)
-
-    //     backup['repositories'] = new_repositories
+        return repository
+    })
 
     return config
 }

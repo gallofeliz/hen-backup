@@ -1,32 +1,22 @@
 import { durationToSeconds } from './utils'
 import cron from 'cron-parser'
 
-interface Schedule {
-    fn: Function
-    schedules: string[]
-    runOnStart: boolean
-    timeoutId: null | NodeJS.Timeout
-}
-
 export default class FnScheduler {
-    protected schedules: Schedule[] = []
+    protected fn: Function
+    protected schedules: string[]
+    protected runOnStart: boolean
+    protected timeoutId: NodeJS.Timeout | null = null
 
-    constructor() {
+    constructor(fn: Function, schedules: string[], runOnStart: boolean) {
+        this.fn = fn
+        this.schedules = schedules
+        this.runOnStart = runOnStart
     }
 
-    public schedule(fn: Function, schedules: string[], runOnStart: boolean) {
-        this.schedules.push({
-            fn,
-            schedules,
-            runOnStart,
-            timeoutId: null
-        })
-    }
-
-    protected getNextScheduleTime(schedules: string[]): number {
+    protected getNextScheduleTime(): number {
         const now = (new Date).getTime()
 
-        const nextTimes = schedules.map(schedule => {
+        const nextTimes = this.schedules.map(schedule => {
             if (schedule.includes(' ')) {
                 return cron.parseExpression(schedule).next().getTime() - now
             }
@@ -37,33 +27,29 @@ export default class FnScheduler {
         return nextTimes.sort()[0]
     }
 
-    protected configure(schedule: Schedule) {
-        schedule.timeoutId = setTimeout(() => this.run(schedule), this.getNextScheduleTime(schedule.schedules) * 1000)
+    protected run(starting = false) {
+        this.timeoutId = setTimeout(() => this.run(), this.getNextScheduleTime() * 1000)
 
-        if (schedule.runOnStart) {
-            this.run(schedule)
-        }
-    }
-
-    protected run(schedule: Schedule) {
-        schedule.timeoutId = setTimeout(() => this.run(schedule), this.getNextScheduleTime(schedule.schedules) * 1000)
-
-        schedule.fn()
-    }
-
-    protected reset(schedule: Schedule) {
-        if (schedule.timeoutId) {
-            clearTimeout(schedule.timeoutId)
+        if (starting && !this.runOnStart) {
+            return
         }
 
-        schedule.timeoutId = null
+        this.fn()
     }
 
     public start() {
-        this.schedules.forEach(schedule => this.configure(schedule))
+        if (this.timeoutId) {
+            return
+        }
+
+        this.run(true)
     }
 
     public stop() {
-        this.schedules.forEach(schedule => this.reset(schedule))
+        if (this.timeoutId) {
+            clearTimeout(this.timeoutId)
+        }
+
+        this.timeoutId = null
     }
 }

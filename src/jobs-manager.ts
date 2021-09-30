@@ -1,3 +1,16 @@
+export type priority = 'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle' | number
+
+
+export default class JobsManager {
+    public start() {
+
+    }
+
+    public stop() {
+
+    }
+}
+
 // import threading
 // from uuid import uuid4
 
