@@ -6,6 +6,8 @@ import {hostname} from 'os'
 
 export interface Config {
     hostname: string
+    uploadLimit?: string
+    downloadLimit?: string
     api?: {
         port: number
     }
@@ -27,6 +29,40 @@ export interface Config {
     backups: {
         [backupName: string]: {
             name: string
+            repositories: string[]
+            paths: string[]
+            excludes?: string[]
+            schedules?: string[]
+            watch?: {
+                wait?: {
+                    min: string
+                    max: string
+                }
+            }
+            uploadLimit?: string
+            downloadLimit?: string
+            priority?: string
+            prune?: {
+                schedules?: string[]
+                priority?: string
+                retentionPolicy: {
+                    nbOfHourly?: number
+                    nbOfdaily?: number
+                    nbOfWeekly?: number
+                    nbOfMonthly?: number
+                    nbOfYearly?: number
+                    minTime?: string
+                }
+            }
+            hooks?: {
+                before?: {
+                    type: string
+                    url: string
+                    timeout?: string
+                    retries?: number
+                    onfailure?: 'continue' | 'stop' | 'ignore'
+                }
+            }
         }
     }
 }

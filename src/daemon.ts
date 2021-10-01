@@ -32,6 +32,7 @@ export default class Daemon {
         })
 
         this.fnSchedulers.forEach(fnScheduler => fnScheduler.start())
+        this.fsWatchers.forEach(fsWatcher => fsWatcher.start())
     }
 
     public stop() {
@@ -48,73 +49,64 @@ export default class Daemon {
         .forEach((repository) => {
             this.fnSchedulers.push(
                 new FnScheduler(
-                    () => this.checkRepository(repository.name),
+                    () => this.checkRepository(repository.name, 'scheduler'),
                     repository.check!.schedules,
                     true
                 )
             )
         })
 
+        Object.values(this.config.backups)
+        .forEach((backup) => {
+            if (backup.schedules) {
+                this.fnSchedulers.push(
+                    new FnScheduler(
+                        () => this.backup(backup.name, 'scheduler'),
+                        backup.schedules,
+                        true
+                    )
+                )
+            }
 
+            if (backup.watch) {
+                this.fsWatchers.push(
+                    new FsWatcher(
+                        () => this.backup(backup.name, 'fswatcher'),
+                        backup.paths,
+                        backup.excludes,
+                        backup.watch.wait && backup.watch.wait.min,
+                        backup.watch.wait && backup.watch.wait.max,
+                    )
+                )
+            }
 
+            if (backup.prune && backup.prune.schedules) {
+                this.fnSchedulers.push(
+                    new FnScheduler(
+                        () => this.prune(backup.name, 'scheduler'),
+                        backup.prune.schedules,
+                        false
+                    )
+                )
+            }
 
-
-        // for backup_name in config['backups']:
-        //     backup = config['backups'][backup_name]
-
-        //     if backup.get('schedules'):
-        //         self._schedules.append(
-        //             schedule(
-        //                 backup['schedules'],
-        //                 self.backup,
-        //                 kwargs={
-        //                     'backup_name': backup_name,
-        //                     'caller_node': TreeNode('Daemon-schedule')
-        //                 },
-        //                 runAtBegin=True,
-        //                 scheduler=scheduler,
-        //                 on_error=self._logger.exception
-        //             )
-        //         )
-
-        //     if backup.get('watch'):
-        //         self._fswatchers.append(
-        //             create_fswatch_callback(**{
-        //                 'paths':backup['paths'],
-        //                 'ignore':backup.get('excludes', []),
-        //                 'fn': self.backup,
-        //                 'kwargs': {
-        //                     'backup_name': backup_name,
-        //                     'caller_node': TreeNode('Daemon-watch')
-        //                 },
-        //                 'logger': self._logger,
-        //                 'on_error': self._logger.exception,
-        //                 **({
-        //                     'wait_min': convert_to_seconds(backup['watch']['wait']['min']),
-        //                     'wait_max': convert_to_seconds(backup['watch']['wait']['max'])
-        //                 } if type(backup['watch']) is not bool and backup['watch'].get('wait') else {})
-        //             })
-        //         )
-
-        //     if backup.get('prune') and 'schedules' in backup['prune']:
-        //         self._schedules.append(
-        //             schedule(
-        //                 backup['prune']['schedules'],
-        //                 self.prune,
-        //                 kwargs={
-        //                     'backup_name': backup_name,
-        //                 },
-        //                 runAtBegin=False,
-        //                 scheduler=scheduler,
-        //                 on_error=self._logger.exception
-        //             )
-        //         )
+        })
 
     }
 
-    protected initRepository(repositoryName: string, priority='next') {
+    protected initRepository(repositoryName: string, priority=null) {
+        console.log('init', repositoryName)
     }
 
-    protected checkRepository(repositoryName: string, priority=null) {
+    protected checkRepository(repositoryName: string, trigger:'scheduler' | 'api', priority=null, logger=null) {
+        console.log('check', repositoryName)
+    }
+
+    protected backup(backupName: string, trigger:'scheduler' | 'fswatcher' | 'api', priority=null, logger=null) {
+        console.log('backup', backupName, trigger)
+    }
+
+    protected prune(backupName: string, trigger:'scheduler' | 'api', priority=null, logger=null) {
+        console.log('prune', backupName)
     }
 }
