@@ -3,6 +3,7 @@ import { Config } from './config'
 import FnScheduler from './fn-scheduler'
 import JobsManager from './jobs-manager'
 import FsWatcher from './fs-watcher'
+import Restic from './restic'
 
 export default class Daemon {
     protected config: Config
@@ -11,12 +12,14 @@ export default class Daemon {
     protected jobsManager: JobsManager
     protected started = false
     protected fsWatchers: FsWatcher[] = []
+    protected restic: Restic
 
     constructor(config: Config, logger: Logger) {
         this.config = config
         this.logger = logger.child('daemon')
         this.jobsManager = new JobsManager
         this.configureTriggers()
+        this.restic = new Restic
     }
 
     public start() {
@@ -41,6 +44,10 @@ export default class Daemon {
         }
         this.logger.info('Stopping')
         this.started = false
+        this.restic.terminateAll()
+        this.fnSchedulers.forEach(fnScheduler => fnScheduler.stop())
+        this.fsWatchers.forEach(fsWatcher => fsWatcher.stop())
+        this.jobsManager.stop()
     }
 
     protected configureTriggers() {
