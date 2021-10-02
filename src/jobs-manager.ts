@@ -1,19 +1,22 @@
-export class Job {
+import { EventEmitter } from 'events'
+
+export class Job extends EventEmitter {
     protected trigger: string | null
     protected operation: string
     protected subjects: Record<string, string>
     protected priority: string | number
-    protected fn: Function
+    protected fn: (job: Job) => Promise<any>
     protected state: 'new' | 'running' | 'success' | 'failure' = 'new'
     protected result: Promise<any>
     protected createdAt: Date = new Date
-    protected resolve?: Function
-    protected reject?: Function
+    protected resolve?: (data: any) => void
+    protected reject?: (error: Error) => void
 
     constructor(
         { trigger, operation, subjects, fn, priority = 'normal' }:
-        { trigger: string | null, operation: string, subjects: Record<string, string>, fn: Function, priority?: string }
+        { trigger: string | null, operation: string, subjects: Record<string, string>, fn: (job: Job) => Promise<any>, priority?: string }
     ) {
+        super()
 
         if (!['immediate', 'next', 'superior', 'normal', 'inferior', 'on-idle'].includes(priority) && !Number.isFinite(priority)) {
             throw new Error('Invalid priority')
@@ -62,11 +65,11 @@ export class Job {
         this.state = 'running'
 
         try {
-            this.resolve!(await this.fn())
+            this.resolve!(await this.fn(this))
             this.state = 'success'
         } catch (e) {
             this.state = 'failure'
-            this.reject!(e)
+            this.reject!(e as Error)
         }
 
         return this.getResult()
@@ -77,7 +80,7 @@ export class Job {
     }
 
     public async abort() {
-
+        this.emit('abort')
     }
 }
 
@@ -101,7 +104,7 @@ export default class JobsManager {
         this.running.forEach(job => job.abort())
     }
 
-    public addJob(job: Job, canBeDuplicate: boolean = true) {
+    public addJob(job: Job, canBeDuplicate: boolean = false, getResult = false) {
         if (job.getState() !== 'new') {
             throw new Error('Job already started')
         }
@@ -125,20 +128,25 @@ export default class JobsManager {
         }
 
         if (this.started && job.getPriority() === 'immediate' && this.queue.length > 0) {
-            return this.run(job)
-        }
-
-        let index = 0
-        for (const jjob of this.queue) {
-            if (this.isPrioSup(job, jjob)) {
-                break
+            this.run(job)
+        } else {
+            let index = 0
+            for (const jjob of this.queue) {
+                if (this.isPrioSup(job, jjob)) {
+                    break
+                }
+                index++
             }
-            index++
+
+            this.queue.splice(index, 0, job)
+            this.runNext()
         }
 
-        this.queue.splice(index, 0, job)
-        this.runNext()
-        return job.getResult()
+        if (getResult) {
+            return job.getResult()
+        }
+
+        job.getResult().catch(console.error)
     }
 
     protected isPrioSup(jobA: Job, jobB: Job): boolean {

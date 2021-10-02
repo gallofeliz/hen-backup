@@ -1,52 +1,37 @@
 import { ChildProcess, spawn } from 'child_process'
 import Logger from './logger'
-import { once } from 'events'
+import { once, EventEmitter } from 'events'
+import { sizeToKiB } from './utils'
 
 export interface ResticOpts {
-    uploadLimit: string
-    downloadLimit: string
+    uploadLimit?: string
+    downloadLimit?: string
     repository: {
         location: string
         password: string
-        [k: string]: string
+        providerEnv: Record<string, string>
     }
-}
-// Make process like ?
-export default {
-    backup() {},
-    snapshots() {}
+    outputStream?: NodeJS.WritableStream
 }
 
-// Make class ? Can help to block new processes in case of stop ?
-export class Restic {
-    protected processes: ChildProcess[] = []
+class ResticCall extends EventEmitter {
+    protected process: ChildProcess
 
-    public async backup() {
+    constructor(command: string, args: string[], opts: ResticOpts) {
+        super()
 
-    }
-
-    public async snapshots() {
-
-    }
-
-    public async check() {
-
-    }
-
-    public async init() {
-
-    }
-
-    public async run(command: string, args: string[], env: Record<string, string>, logger: Logger, outputStream?: NodeJS.WritableStream): Promise<any> {
-
-        logger = logger.child('restic-' + command)
-
-        if (command === 'dump' && !outputStream) {
+        if (command === 'dump' && !opts.outputStream) {
             throw new Error('Please provide outputStream for dump')
         }
 
-        if (command !== 'dump' && outputStream) {
+        if (command !== 'dump' && opts.outputStream) {
             throw new Error('Unexpected outputStream')
+        }
+
+        const env = {
+            RESTIC_REPOSITORY: opts.repository.location,
+            RESTIC_PASSWORD: opts.repository.password,
+            ...opts.repository.providerEnv
         }
 
         const json = ['ls', 'snapshots'].includes(command) ? true : false
@@ -55,59 +40,59 @@ export class Restic {
         const resticArgs = ['--cleanup-cache', command].concat(args).concat(json ? ['--json'] : [])
         const resticEnv = {...env, 'RESTIC_CACHE_DIR':'/tmp'}
 
-        logger.info('Starting Restic process', {
-            resticArgs,
-            resticEnv
-        })
+        if (opts.uploadLimit) {
+            resticArgs.push('--limit-upload', sizeToKiB(opts.uploadLimit).toString())
+        }
+
+        if (opts.downloadLimit) {
+            resticArgs.push('--limit-download', sizeToKiB(opts.downloadLimit).toString())
+        }
 
         const stdout: string[] = []
         const stderr: string[] = []
 
         const process = spawn('restic', resticArgs, { env: resticEnv, killSignal: 'SIGINT' })
+        this.process = process
 
-        this.processes.push(process)
-
-        if (outputStream) {
-            logger.info('No STDOUT logging')
-            process.stdout.pipe(outputStream)
+        if (opts.outputStream) {
+            process.stdout.pipe(opts.outputStream)
         } else if (json) {
             process.stdout.on('data', (data) => {
                 const strData = data.toString()
                 stdout.push(strData)
-                logger.info('STDOUT ' + strData)
             })
         }
 
         process.stderr.on('data', data => {
             const strData = data.toString()
             stderr.push(strData)
-            logger.info('STDERR ' + strData)
         })
 
-        try {
-            const [exitCode]: [number] = await once(process, 'exit') as [number]
-            logger.info('Exiting with code ' + exitCode)
-            if (exitCode > 0) {
-                throw new Error('Restic error : ' + stderr.join('\n'))
+        ;(async() => {
+            try {
+                const [exitCode]: [number] = await once(process, 'exit') as [number]
+                if (exitCode > 0) {
+                    return this.emit('error', new Error('Restic error : ' + stderr.join('\n')))
+                }
+            } catch (e) {
+                return this.emit('error', e)
             }
-        } catch (e) {
-            logger.info('Error', { error: e })
-            throw e
-        } finally {
-            this.processes.splice(this.processes.indexOf(process), 1)
-        }
 
-        if (!json) {
-            return
-        }
+            if (!json) {
+                return this.emit('finish')
+            }
 
-        return multilineJson ? stdout.map((line) => JSON.parse(line)) : JSON.parse(stdout.join(''))
+            this.emit('finish', multilineJson ? stdout.map((line) => JSON.parse(line)) : JSON.parse(stdout.join('')))
+        })()
     }
 
-    public terminateAll() {
-        this.processes.forEach(process => process.kill('SIGINT'))
+    public abort() {
+        this.process.kill('SIGINT')
     }
 }
 
+export default function callRestic(command: string, args: string[], opts: ResticOpts): ResticCall {
+    return new ResticCall(command, args, opts)
+}
 
 

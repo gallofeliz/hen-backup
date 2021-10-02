@@ -3,6 +3,8 @@ import { Config } from './config'
 import FnScheduler from './fn-scheduler'
 import JobsManager, { Job } from './jobs-manager'
 import FsWatcher from './fs-watcher'
+import callRestic from './restic'
+import { once } from 'events'
 
 export default class Daemon {
     protected config: Config
@@ -105,8 +107,22 @@ export default class Daemon {
                 trigger: null,
                 operation: 'init',
                 subjects: {repository: repositoryName},
-                fn: () => {
+                fn: async (job) => {
                     console.log('Init ' + repositoryName)
+
+                    const resticCall = callRestic(
+                        'init',
+                        [],
+                        {
+                            uploadLimit: this.config.uploadLimit,
+                            downloadLimit: this.config.downloadLimit,
+                            repository: repository
+                        }
+                    )
+
+                    job.once('abort', () => resticCall.abort())
+
+                    await once(resticCall, 'finish')
                 },
                 priority: 'next'
             })
@@ -152,7 +168,7 @@ export default class Daemon {
                 trigger: trigger,
                 operation: 'check',
                 subjects: {repository: repositoryName},
-                fn: () => {
+                fn: async () => {
                     console.log('Check repo ' + repositoryName)
                 },
                 priority: priority || repository.check!.priority
@@ -168,7 +184,7 @@ export default class Daemon {
                 trigger: trigger,
                 operation: 'backup',
                 subjects: {backup: backupName},
-                fn: () => {
+                fn: async () => {
                     console.log('backup ' + backupName)
                 },
                 priority: priority || backup.priority
