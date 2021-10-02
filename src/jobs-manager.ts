@@ -1,242 +1,222 @@
-export type priority = 'immediate' | 'next' | 'superior' | 'normal' | 'inferior' | 'on-idle' | number
+export class Job {
+    protected trigger: string | null
+    protected operation: string
+    protected subjects: Record<string, string>
+    protected priority: string | number
+    protected fn: Function
+    protected state: 'new' | 'running' | 'success' | 'failure' = 'new'
+    protected result: Promise<any>
+    protected createdAt: Date = new Date
+    protected resolve?: Function
+    protected reject?: Function
 
+    constructor(
+        { trigger, operation, subjects, fn, priority = 'normal' }:
+        { trigger: string | null, operation: string, subjects: Record<string, string>, fn: Function, priority?: string }
+    ) {
 
-export default class JobsManager {
-    public start() {
+        if (!['immediate', 'next', 'superior', 'normal', 'inferior', 'on-idle'].includes(priority) && !Number.isFinite(priority)) {
+            throw new Error('Invalid priority')
+        }
 
+        this.trigger = trigger
+        this.operation = operation
+        this.subjects = subjects
+        this.priority = priority
+        this.fn = fn
+        this.result = new Promise((resolve, reject) => {
+            this.resolve = resolve
+            this.reject = reject
+        })
     }
 
-    public stop() {
+    public getState() {
+        return this.state
+    }
+
+    public getPriority() {
+        return this.priority
+    }
+
+    public getTrigger() {
+        return this.trigger
+    }
+
+    public getOperation() {
+        return this.operation
+    }
+
+    public getSubjects() {
+        return this.subjects
+    }
+
+    public getCreatedAt() {
+        return this.createdAt
+    }
+
+    public async run() {
+        if (this.state !== 'new') {
+            throw new Error('Already started')
+        }
+
+        this.state = 'running'
+
+        try {
+            this.resolve!(await this.fn())
+            this.state = 'success'
+        } catch (e) {
+            this.state = 'failure'
+            this.reject!(e)
+        }
+
+        return this.getResult()
+    }
+
+    public async getResult() {
+        return this.result
+    }
+
+    public async abort() {
 
     }
 }
 
-// import threading
-// from uuid import uuid4
+export default class JobsManager {
+    protected queue: Job[] = []
+    protected running: Job[] = []
+    protected started = false
 
-// class Task():
-//     def __init__(self, fn, args=(), kwargs={}, id:any=None, priority='normal'):
-//         self._fn = fn
-//         self._args = args
-//         self._kwargs = kwargs
-//         self._id = uuid4() if id is None else id
-//         self._state = 'new'
-//         self._result = None
-//         self._event = None
+    public start() {
+        if (this.started) {
+            return
+        }
 
-//         if not priority in ['immediate', 'next', 'superior', 'normal', 'inferior', 'on-idle'] and not type(priority) is int:
-//             raise Exception('Invalid priority : excepted immediate, next, normal or int number')
+        this.started = true
+        this.runNext()
+    }
 
-//         self._priority = priority
+    public stop() {
+        this.queue = []
+        this.started = false
+        this.running.forEach(job => job.abort())
+    }
 
-//     def get_id(self) -> any:
-//         return self._id
+    public addJob(job: Job, canBeDuplicate: boolean = true) {
+        if (job.getState() !== 'new') {
+            throw new Error('Job already started')
+        }
 
-//     def get_priority(self):
-//         return self._priority
+        if (this.queue.includes(job)) {
+            return
+        }
 
-//     def is_started(self):
-//         return self._state != 'new'
+        if (!canBeDuplicate) {
+            const equalJob = this.queue.find(inQueueJob => {
+                return inQueueJob.getOperation() === job.getOperation()
+                    && inQueueJob.getSubjects() === job.getSubjects()
+            })
 
-//     def is_running(self):
-//         return self._state == 'running'
+            if (equalJob) {
+                if (equalJob.getPriority() === job.getPriority()) {
+                    return
+                }
+                this.queue.splice(this.queue.indexOf(equalJob), 1)
+            }
+        }
 
-//     def is_ended(self):
-//         return self._state == 'success' or self._state == 'failure'
+        if (this.started && job.getPriority() === 'immediate' && this.queue.length > 0) {
+            return this.run(job)
+        }
 
-//     def run(self):
-//         if self.is_started():
-//             raise Exception('Already started')
+        let index = 0
+        for (const jjob of this.queue) {
+            if (this.isPrioSup(job, jjob)) {
+                break
+            }
+            index++
+        }
 
-//         self._state = 'running'
-//         try:
-//             result = self._fn(*self._args, **self._kwargs)
-//             self._state = 'success'
-//             self._result = result
-//         except Exception as e:
-//             self._state = 'failure'
-//             self._result = e
-//             if not self._event:
-//                 raise Exception('Unhandled exception detected')
+        this.queue.splice(index, 0, job)
+        this.runNext()
+        return job.getResult()
+    }
 
-//         if self._event:
-//             self._event.set()
+    protected isPrioSup(jobA: Job, jobB: Job): boolean {
+        let priorityA = jobA.getPriority()
+        let priorityB = jobB.getPriority()
 
-//     def abort(self):
-//         pass
+        if (priorityA === 'immediate') {
+            return true
+        }
 
-//     def wait_until_ended(self):
-//         self._event = threading.Event()
-//         self._event.wait()
+        if (priorityA === 'next' && priorityB != 'immediate') {
+            return true
+        }
 
-//     def get_result(self):
-//         self.wait_until_ended()
-//         if self._state == 'success':
-//             return self._result
-//         raise self._result
+        if (priorityA === 'on-idle') {
+            return false
+        }
 
-// class TaskManager():
-//     def __init__(self, logger):
-//         self._list = []
-//         self._logger = logger
-//         self._wait_list = None
-//         self._started = False
-//         self._running_tasks = []
+        if (priorityB === 'immediate' || priorityB === 'next') {
+            return false
+        }
 
-//     def get_queueing_tasks(self):
-//         return self._list
+        if (priorityB === 'on-idle') {
+            return true
+        }
 
-//     def add_task(self, task, get_result=False):
-//         for item in self._list:
-//            if item == task:
-//                return
+        if (priorityA === 'normal') {
+            priorityA = 0
+        }
 
-//         if task.is_started():
-//             raise Exception('Task already started')
+        if (priorityB === 'normal') {
+            priorityB = 0
+        }
 
-//         # Add timeout to execute on immediate (in parallel) some backup task to avoid long task freezing queue ?
-//         # Can use priority on backups to manage some "urgent" backups ?
-//         # Add a priority like 'alone' to not use queue place (see immediate), and timeout with next to run alone if current is too long ?
-//         # For example a backup each 5 mins that allow some minutes to wait but not hours :
-//         #    - immediate
-//         #    - next (or priority is a timeout ?) with timeout, example priority="3m", will wait max 3m and after run alone ?
-//         # Manage parallel calls, but how to control Bandwith, repository locks, CPU usage, etc ?
+        if (priorityA === 'superior' && priorityB != 'superior') {
+            return true
+        }
 
-//         priority = task.get_priority()
+        if (priorityA === 'inferior' && priorityB != 'inferior') {
+            return false
+        }
 
-//         if priority == 'immediate' and len(self._list) != 0 and self._started:
-//             threading.Thread(target=self._run_task, args=(task,)).start()
-//         else:
-//             index = 0
-//             for ctask in self._list:
-//                 if self._is_prio_sup(task, ctask):
-//                     break
-//                 else:
-//                     index = index + 1
+        if (priorityB === 'superior' && priorityA != 'superior') {
+            return false
+        }
 
-//             self._list.insert(index, task)
+        if (priorityB === 'inferior' && priorityA != 'inferior') {
+            return true
+        }
 
-//         self._logger.info('Added task', extra={
-//             'component': 'task_manager',
-//             'action': 'add_task',
-//             'priority': priority,
-//             'queue_size': len(self._list),
-//             'status': 'success'
-//         })
+        return priorityA > priorityB
+    }
 
-//         if self._wait_list and len(self._list) != 0:
-//             self._wait_list.set()
+    protected runNext() {
+        if (!this.started) {
+            return
+        }
 
-//         if get_result:
-//             return task.get_result()
+        if (this.queue.length === 0) {
+            return
+        }
 
-//     def _is_prio_sup(self, task, ctask):
-//         # 'immediate', 'next', 'superior', 'normal', 'inferior', 'on-idle'
-//         priority = task.get_priority()
-//         cpriority = ctask.get_priority()
+        if (this.running.length > 0) {
+            return
+        }
 
-//         if priority == 'immediate':
-//             return True
+        this.run(this.queue.shift() as Job)
+    }
 
-//         if priority == 'next' and cpriority != 'immediate':
-//             return True
+    protected async run(job: Job) {
+        this.running.push(job)
 
-//         if priority == 'on-idle':
-//             return False
+        try {
+            await job.run()
+        } catch(e) {}
 
-//         if cpriority == 'immediate' or cpriority == 'next':
-//             return False
+        this.running.splice(this.running.indexOf(job))
 
-//         if cpriority == 'on-idle':
-//             return True
-
-//         if priority == 'normal':
-//             priority = 0
-
-//         if cpriority == 'normal':
-//             cpriority = 0
-
-//         if priority == 'superior' and cpriority != 'superior':
-//             return True
-
-//         if priority == 'inferior' and cpriority != 'inferior':
-//             return False
-
-//         if cpriority == 'superior' and priority != 'superior':
-//             return False
-
-//         if cpriority == 'inferior' and priority != 'inferior':
-//             return True
-
-//         return priority > cpriority
-
-//     def run(self):
-//         self._started = True
-
-//         nb_immediates = 0
-//         for task in self._list:
-//             if task.get_priority == 'immediate':
-//                 nb_immediates += 1
-
-//         if nb_immediates > 1:
-//             for x in range(1, nb_immediates):
-//                 task = self._list.pop(0)
-//                 threading.Thread(target=self._run_task, args=(task,))
-
-//         threading.Thread(target=self._routine).start()
-
-//     def stop(self):
-//         self._started = False
-//         if self._wait_list:
-//             self._wait_list.set()
-
-//         for task in self._running_tasks:
-//             threading.Thread(target=task.abort).start()
-
-//     def get_stats(self):
-//         return {
-//             'running': self._started,
-//             'tasks': {
-//                 'queuing': len(self._list),
-//                 'running': len(self._running_tasks)
-//             }
-//         }
-
-//     def _run_task(self, task):
-//         self._logger.info('Running task', extra={
-//             'component': 'task_manager',
-//             'action': 'run_task',
-//             'queue_size': len(self._list),
-//             'status': 'starting'
-//         })
-
-//         self._running_tasks.append(task)
-
-//         try:
-//             task.run()
-//         except Exception as e:
-//             self._logger.exception('Unexpected exception on task run')
-
-//         self._running_tasks.remove(task)
-
-//     def _routine(self):
-//         while True:
-//             task = self._get_next()
-//             if not task and not self._started:
-//                 break;
-//             self._run_task(task)
-
-//     def _get_next(self):
-//         if len(self._list) == 0 and self._started:
-//             self._wait_list = threading.Event()
-//             self._wait_list.wait()
-
-//         self._wait_list = None
-
-//         if not self._started:
-//             return
-
-//         # while len(self._list) == 0:
-//         #     time.sleep(5)
-
-//         return self._list.pop(0)
+        this.runNext()
+    }
+}

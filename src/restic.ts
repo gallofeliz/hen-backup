@@ -1,12 +1,53 @@
 import { ChildProcess, spawn } from 'child_process'
 import Logger from './logger'
+import { once } from 'events'
 
-export default class Restic {
+export interface ResticOpts {
+    uploadLimit: string
+    downloadLimit: string
+    repository: {
+        location: string
+        password: string
+        [k: string]: string
+    }
+}
+// Make process like ?
+export default {
+    backup() {},
+    snapshots() {}
+}
+
+// Make class ? Can help to block new processes in case of stop ?
+export class Restic {
     protected processes: ChildProcess[] = []
 
-    public run(command: string, args: string[], env: Record<string, string>, logger: Logger) {
+    public async backup() {
+
+    }
+
+    public async snapshots() {
+
+    }
+
+    public async check() {
+
+    }
+
+    public async init() {
+
+    }
+
+    public async run(command: string, args: string[], env: Record<string, string>, logger: Logger, outputStream?: NodeJS.WritableStream): Promise<any> {
 
         logger = logger.child('restic-' + command)
+
+        if (command === 'dump' && !outputStream) {
+            throw new Error('Please provide outputStream for dump')
+        }
+
+        if (command !== 'dump' && outputStream) {
+            throw new Error('Unexpected outputStream')
+        }
 
         const json = ['ls', 'snapshots'].includes(command) ? true : false
         const multilineJson = command === 'ls' ? true : false
@@ -19,57 +60,48 @@ export default class Restic {
             resticEnv
         })
 
-        spawn('restic', resticArgs, { env: resticEnv })
+        const stdout: string[] = []
+        const stderr: string[] = []
 
+        const process = spawn('restic', resticArgs, { env: resticEnv, killSignal: 'SIGINT' })
 
+        this.processes.push(process)
 
-//     json_iterator=False # For next millenium, use iterator for big snapshots ?
-//     if cmd == 'ls' and json == True:
-//         json_iterator=True
+        if (outputStream) {
+            logger.info('No STDOUT logging')
+            process.stdout.pipe(outputStream)
+        } else if (json) {
+            process.stdout.on('data', (data) => {
+                const strData = data.toString()
+                stdout.push(strData)
+                logger.info('STDOUT ' + strData)
+            })
+        }
 
-//     processes.append(proc)
+        process.stderr.on('data', data => {
+            const strData = data.toString()
+            stderr.push(strData)
+            logger.info('STDERR ' + strData)
+        })
 
-//     out=[] # only last to avoid memory boooom ?
-//     err=[] # only last to avoid memory boooom ?
+        try {
+            const [exitCode]: [number] = await once(process, 'exit') as [number]
+            logger.info('Exiting with code ' + exitCode)
+            if (exitCode > 0) {
+                throw new Error('Restic error : ' + stderr.join('\n'))
+            }
+        } catch (e) {
+            logger.info('Error', { error: e })
+            throw e
+        } finally {
+            this.processes.splice(this.processes.indexOf(process), 1)
+        }
 
-//     def log(stream, channel, stack):
-//         for rline in iter(stream.readline, ''):
-//             line = rline.rstrip()
-//             if line:
-//                 logger.info(channel + ' ' + line, extra={'component': 'restic', 'action': 'call_restic', 'subaction': 'receive_output', 'status': 'running', 'node': node})
-//                 stack.append(line)
-//         logger.info(channel + ' CLOSED', extra={'component': 'restic', 'action': 'call_restic', 'subaction': 'receive_output', 'status': 'success', 'node': node})
+        if (!json) {
+            return
+        }
 
-
-//     threading.Thread(target=log, args=(proc.stdout, 'STDOUT', out,)).start()
-//     threading.Thread(target=log, args=(proc.stderr, 'STDERR', err,)).start()
-//     code = proc.wait()
-
-//     processes.remove(proc)
-
-//     logger.info('EXIT ' + str(code), extra={'component': 'restic', 'action': 'call_restic', 'status': 'failure' if code else 'success', 'node': node})
-
-//     if json == True and not json_iterator:
-//         stdout = json_loads('\n'.join(out))
-//     elif json == True:
-//         stdout = []
-//         for line in out:
-//             stdout.append(json_loads(line))
-//     else:
-//         stdout = '\n'.join(out)
-
-//     result = {
-//         'code': code,
-//         'stdout': stdout,
-//         'stderr': '\n'.join(err)
-//     }
-
-//     if code > 0:
-//         raise CallResticError(result)
-
-//     return result
-
-
+        return multilineJson ? stdout.map((line) => JSON.parse(line)) : JSON.parse(stdout.join(''))
     }
 
     public terminateAll() {
