@@ -160,12 +160,13 @@ export class Job extends EventEmitter {
 export default class JobsManager {
     protected queue: Job[] = []
     protected running: Job[] = []
-    protected history: Job[] = new Array(20)
+    protected archived: Job[]
     protected started = false
     protected logger: Logger
 
-    public constructor(logger: Logger) {
+    public constructor(logger: Logger, archivedCount: number = 50) {
         this.logger = logger
+        this.archived = new Array(archivedCount)
     }
 
     public start() {
@@ -183,8 +184,12 @@ export default class JobsManager {
         this.running.forEach(job => job.abort())
     }
 
-    public getHistory() {
-        return this.history
+    public getSummary() {
+        return {
+            queue: this.queue,
+            running: this.running,
+            archived: this.archived.filter(job => job)
+        }
     }
 
     public addJob(job: Job, canBeDuplicate: boolean = false, getResult = false) {
@@ -196,9 +201,6 @@ export default class JobsManager {
             return
         }
 
-        this.history.shift()
-        this.history.push(job)
-
         if (!canBeDuplicate) {
             const equalJob = this.queue.find(inQueueJob => {
                 return inQueueJob.getOperation() === job.getOperation()
@@ -209,11 +211,13 @@ export default class JobsManager {
                 if (equalJob.getPriority() === job.getPriority()) {
                     this.logger.info('Not queueing job because of duplicate', { job: job.getUuid() })
                     job.cancel()
+                    this.archive(job)
                     return
                 }
                 this.queue.splice(this.queue.indexOf(equalJob), 1)
                 this.logger.info('Canceling previous job on duplicate', { job: job.getUuid(), previousJob: job.getUuid() })
                 equalJob.cancel()
+                this.archive(equalJob)
             }
         }
 
@@ -239,6 +243,11 @@ export default class JobsManager {
         }
 
         job.getResult().catch(() => {})
+    }
+
+    protected archive(job: Job) {
+        this.archived.shift()
+        this.archived.push(job)
     }
 
     protected isPrioSup(jobA: Job, jobB: Job): boolean {
@@ -316,7 +325,7 @@ export default class JobsManager {
         } catch(e) {}
 
         this.running.splice(this.running.indexOf(job))
-
+        this.archive(job)
         this.runNext()
     }
 }

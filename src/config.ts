@@ -4,13 +4,28 @@ import envsubst from '@tuplo/envsubst'
 import _ from 'lodash'
 import {hostname} from 'os'
 
+export interface ApiConfig {
+    port: number
+    credentials: {
+        username: string
+        password: string
+    }
+}
+
+export interface Hook {
+    type: 'http'
+    url: string
+    method?: string
+    timeout?: string
+    retries?: number
+    onfailure?: 'continue' | 'stop' | 'ignore'
+}
+
 export interface Config {
     hostname: string
     uploadLimit?: string
     downloadLimit?: string
-    api?: {
-        port: number
-    }
+    api?: ApiConfig
     log: {
         level: string
     }
@@ -55,13 +70,7 @@ export interface Config {
                 }
             }
             hooks?: {
-                before?: {
-                    type: string
-                    url: string
-                    timeout?: string
-                    retries?: number
-                    onfailure?: 'continue' | 'stop' | 'ignore'
-                }
+                before?: Hook
             }
         }
     }

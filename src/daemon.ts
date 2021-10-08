@@ -1,11 +1,13 @@
 import { Logger } from './logger'
-import { Config } from './config'
+import { Config, Hook } from './config'
 import FnScheduler from './fn-scheduler'
 import JobsManager, { Job } from './jobs-manager'
 import FsWatcher from './fs-watcher'
 import callRestic from './restic'
 import { once } from 'events'
 import _ from 'lodash'
+import { durationToSeconds } from './utils'
+import got, { Method as GotMethod } from 'got'
 
 export default class Daemon {
     protected config: Config
@@ -45,6 +47,168 @@ export default class Daemon {
         this.fnSchedulers.forEach(fnScheduler => fnScheduler.stop())
         this.fsWatchers.forEach(fsWatcher => fsWatcher.stop())
         this.jobsManager.stop()
+    }
+
+    public getConfigSummary() {
+        return {
+            hostname: this.config.hostname,
+            repositories: _.mapValues(this.config.repositories, () => ({})),
+            backups: _.mapValues(this.config.backups, (backup) => ({
+                repositories: backup['repositories']
+            }))
+        }
+    }
+
+    public getJobsSummary() {
+        return _.mapValues(this.jobsManager.getSummary(), jobs => jobs.map(job => ({
+            uuid: job.getUuid(),
+            createdAt: job.getCreatedAt(),
+            state: job.getState(),
+            priority: job.getPriority(),
+            trigger: job.getTrigger(),
+            operation: job.getOperation(),
+            subjects: job.getSubjects()
+        })))
+    }
+
+    public listSnapshots(criterias: {backupName?: string, repositoryName?: string}) {
+
+    }
+
+    public getSnapshot(repositoryName: string, snapshotId: string) {
+
+    }
+
+    public async checkRepository(repositoryName: string, trigger:'scheduler' | 'api', priority?: string) {
+        const repository = this.config.repositories[repositoryName]
+
+        return this.jobsManager.addJob(
+            new Job({
+                logger: this.logger,
+                trigger: trigger,
+                operation: 'check',
+                subjects: {repository: repositoryName},
+                fn: async (job) => {
+                    await this.unlockRepository(repository, job)
+
+                    const resticCall = callRestic(
+                        'check',
+                        [],
+                        {
+                            uploadLimit: this.config.uploadLimit,
+                            downloadLimit: this.config.downloadLimit,
+                            repository: repository,
+                            logger: job.getLogger()
+                        }
+                    )
+
+                    job.once('abort', () => resticCall.abort())
+
+                    await once(resticCall, 'finish')
+                },
+                priority: priority || repository.check!.priority
+            })
+        )
+    }
+
+    public backup(backupName: string, trigger:'scheduler' | 'fswatcher' | 'api', priority?: string) {
+        const backup = this.config.backups[backupName]
+
+        return this.jobsManager.addJob(
+            new Job({
+                logger: this.logger,
+                trigger: trigger,
+                operation: 'backup',
+                subjects: {backup: backupName},
+                fn: async (job) => {
+                    const beforeHook = backup.hooks && backup.hooks.before
+                    let beforeHookOk = true
+
+                    if (beforeHook) {
+                        try {
+                            await this.handleHook(beforeHook, job)
+                        } catch (e) {
+                            if (beforeHook.onfailure === 'stop') {
+                                throw e
+                            }
+                            if (beforeHook.onfailure !== 'ignore') {
+                                beforeHookOk = false
+                            }
+                        }
+                    }
+
+                    let allRepositoryOk = true
+
+                    for (const repositoryName of backup.repositories) {
+                        const repository = this.config.repositories[repositoryName]
+
+                        if (job.getState() === 'aborting') {
+                            return
+                        }
+
+                        try {
+                            await this.unlockRepository(repository, job)
+
+                            const resticCall = callRestic(
+                                'backup',
+                                [
+                                    '--tag',
+                                    'backup-' + backup.name,
+                                    '--host',
+                                    this.config.hostname,
+                                    ...backup.paths,
+                                    ...backup.excludes ? backup.excludes.map(exclude => '--exclude=' + exclude) : []
+                                ],
+                                {
+                                    uploadLimit: backup.uploadLimit ?? this.config.uploadLimit,
+                                    downloadLimit: backup.downloadLimit ?? this.config.downloadLimit,
+                                    repository: repository,
+                                    logger: job.getLogger()
+                                }
+                            )
+
+                            job.once('abort', () => resticCall.abort())
+
+                            await once(resticCall, 'finish')
+                        } catch (e) {
+                            allRepositoryOk = false
+                        }
+                    }
+
+                    if (!allRepositoryOk || !allRepositoryOk) {
+                        throw new Error('Hook or repository backup failed')
+                    }
+
+                },
+                priority: priority || backup.priority
+            })
+        )
+    }
+
+    public prune(backupName: string, trigger:'scheduler' | 'api', priority?: string) {
+        console.log('prune', backupName)
+    }
+
+    protected async handleHook(hook: Hook, job: Job) {
+        if (hook.type !== 'http') {
+            throw new Error('Only http implemented')
+        }
+
+        const request = got({
+            method: hook.method as GotMethod || 'GET',
+            url: hook.url,
+            timeout: hook.timeout ? durationToSeconds(hook.timeout) * 1000 : undefined,
+            retry: hook.retries || 0,
+            hooks: {
+                beforeRequest: [options  => {job.getLogger().info('Calling hook ' + options.url)}],
+                afterResponse: [response => { job.getLogger().info('Hook returned code ' + response.statusCode) ; return response }],
+                beforeError: [error => { job.getLogger().info('Hook returned error ' + error.message) ; return error }]
+            }
+        })
+
+        job.once('abort', () => request.cancel())
+
+        await request
     }
 
     protected configureTriggers() {
@@ -132,38 +296,6 @@ export default class Daemon {
         )
     }
 
-    public async checkRepository(repositoryName: string, trigger:'scheduler' | 'api', priority=null) {
-        const repository = this.config.repositories[repositoryName]
-
-        return this.jobsManager.addJob(
-            new Job({
-                logger: this.logger,
-                trigger: trigger,
-                operation: 'check',
-                subjects: {repository: repositoryName},
-                fn: async (job) => {
-                    await this.unlockRepository(repository, job)
-
-                    const resticCall = callRestic(
-                        'check',
-                        [],
-                        {
-                            uploadLimit: this.config.uploadLimit,
-                            downloadLimit: this.config.downloadLimit,
-                            repository: repository,
-                            logger: job.getLogger()
-                        }
-                    )
-
-                    job.once('abort', () => resticCall.abort())
-
-                    await once(resticCall, 'finish')
-                },
-                priority: priority || repository.check!.priority
-            })
-        )
-    }
-
     protected async unlockRepository(repository: Config['repositories'][0], job: Job) {
         const resticCall = callRestic(
             'unlock',
@@ -179,38 +311,6 @@ export default class Daemon {
         job.once('abort', () => resticCall.abort())
 
         await once(resticCall, 'finish')
-    }
-
-    public backup(backupName: string, trigger:'scheduler' | 'fswatcher' | 'api', priority=null) {
-        console.log('backup ' + backupName)
-        return
-        const backup = this.config.backups[backupName]
-
-        return this.jobsManager.addJob(
-            new Job({
-                logger: this.logger,
-                trigger: trigger,
-                operation: 'backup',
-                subjects: {backup: backupName},
-                fn: async () => {
-                },
-                priority: priority || backup.priority
-            })
-        )
-    }
-
-    public prune(backupName: string, trigger:'scheduler' | 'api', priority=null) {
-        console.log('prune', backupName)
-    }
-
-    public getConfigSummary() {
-        return {
-            hostname: this.config.hostname,
-            repositories: _.mapValues(this.config.repositories, () => ({})),
-            backups: _.mapValues(this.config.backups, (backup) => ({
-                repositories: backup['repositories']
-            }))
-        }
     }
 
     // def list_snapshots(self, repository_name=None, backup_name=None, priority='immediate', sort='Date', reverse=False):
@@ -389,21 +489,6 @@ export default class Daemon {
     //         get_result=False
     //     )
 
-    // def _hook(self, hook):
-    //     if hook['type'] != 'http':
-    //         raise Exception('Only http implemented')
-
-    //     @retry(wait_exponential_multiplier=1000, wait_exponential_max=10000, stop_max_attempt_number=hook['retries'])
-    //     def do_hook():
-    //         response = getattr(requests, hook.get('method', 'post').lower())(
-    //             hook['url'],
-    //             timeout=convert_to_seconds(hook['timeout']) if 'timeout' in hook else None
-    //         )
-
-    //         response.raise_for_status()
-
-    //     do_hook()
-
     // def prune(self, backup_name, priority=None, get_result=False):
     //     backup = self._config['backups'][backup_name]
     //     prune = backup['prune']
@@ -500,149 +585,6 @@ export default class Daemon {
     //         get_result=get_result
     //     )
 
-    // def backup(self, backup_name, caller_node, priority=None, get_result=False):
-    //     backup = self._config['backups'][backup_name]
-    //     id = "backup_%s" % backup_name
-    //     node = caller_node.extends(id)
-
-    //     self._logger.info('backup requested', extra={
-    //         'component': 'daemon',
-    //         'action': 'backup',
-    //         'backup': backup['name'],
-    //         'status': 'queuing',
-    //         'node': node
-    //     })
-
-    //     if not priority:
-    //         priority = backup.get('priority', 'normal')
-
-    //     def do_backup():
-    //         self._logger.info('Starting backup', extra={
-    //             'component': 'daemon',
-    //             'action': 'backup',
-    //             'backup': backup['name'],
-    //             'status': 'starting',
-    //             'node': node
-    //         })
-
-    //         hook = glom(backup, 'hooks.before', default=None)
-    //         hook_ok = True
-    //         if hook:
-    //             hook_node = node.extends('hook')
-    //             # Should be good subaction ?
-    //             self._logger.info('Starting backup before hook', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'backup',
-    //                 'subaction': 'run_hook',
-    //                 'backup': backup['name'],
-    //                 'hook': 'before',
-    //                 'status': 'starting',
-    //                 'node': hook_node
-    //             })
-
-    //             try:
-    //                 self._hook(hook)
-
-    //                 self._logger.info('Success backup before hook', extra={
-    //                     'component': 'daemon',
-    //                     'action': 'backup',
-    //                     'subaction': 'run_hook',
-    //                     'backup': backup['name'],
-    //                     'hook': 'before',
-    //                     'status': 'sucess',
-    //                     'node': hook_node
-    //                 })
-
-    //             except Exception as e:
-    //                 self._logger.exception('Failure backup before hook', extra={
-    //                     'component': 'daemon',
-    //                     'action': 'backup',
-    //                     'subaction': 'run_hook',
-    //                     'backup': backup['name'],
-    //                     'hook': 'before',
-    //                     'status': 'failure',
-    //                     'node': hook_node
-    //                 })
-
-    //                 if hook['onfailure'] == 'stop':
-    //                     self._logger.error('Backup failed (before hook failed) :(', extra={
-    //                         'component': 'daemon',
-    //                         'action': 'backup',
-    //                         'backup': backup['name'],
-    //                         'status': 'failure',
-    //                         'node': node
-    //                     })
-    //                     return
-
-    //                 if not hook['onfailure'] == 'ignore':
-    //                     hook_ok = False
-
-    //         all_repo_ok = True
-    //         for repository_name in backup['repositories']:
-    //             repository = self._config['repositories'][repository_name]
-    //             repo_node = node.extends('repository_%s' % repository['name'])
-    //             self._logger.info('Starting backup on repository', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'backup',
-    //                 'subaction': 'backup_repository',
-    //                 'backup': backup['name'],
-    //                 'repository': repository['name'],
-    //                 'status': 'starting',
-    //                 'node': repo_node
-    //             })
-    //             try:
-    //                 options = ['--tag', quote('backup-' + backup['name']), '--host', self._config['hostname']] + self._get_restic_global_opts(backup)
-    //                 args = backup['paths'] + list(map(lambda exclude : '--exclude=' + quote(exclude), backup.get('excludes', [])))
-    //                 self._unlock_repository(repository)
-    //                 call_restic(cmd='backup', args=options + args, env=self._get_restic_repository_envs(repository), logger=self._logger, caller_node=repo_node)
-    //                 self._logger.info('Backup on repository ended :)', extra={
-    //                     'component': 'daemon',
-    //                     'action': 'backup',
-    //                     'subaction': 'backup_repository',
-    //                     'backup': backup['name'],
-    //                     'repository': repository['name'],
-    //                     'status': 'success',
-    //                     'node': repo_node
-    //                 })
-    //             except Exception as e:
-    //                 self._logger.exception('Backup on repository failed :(', extra={
-    //                     'component': 'daemon',
-    //                     'subaction': 'backup_repository',
-    //                     'action': 'backup',
-    //                     'backup': backup['name'],
-    //                     'repository': repository['name'],
-    //                     'status': 'failure',
-    //                     'node': repo_node
-    //                 })
-    //                 all_repo_ok = False
-
-    //         if all_repo_ok and hook_ok:
-    //             self._logger.info('Backup ended :)', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'backup',
-    //                 'backup': backup['name'],
-    //                 'status': 'success',
-    //                 'node': node
-    //             })
-    //         else:
-    //             self._logger.error('Backup failed (hook or backup in repository failed) :(', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'backup',
-    //                 'backup': backup['name'],
-    //                 'status': 'failure',
-    //                 'node': node
-    //             })
-
-    //     self._task_manager.add_task(
-    //         task=Task(fn=do_backup, priority=priority, id="backup_%s" % backup_name),
-    //         ignore_if_duplicate=True,
-    //         get_result=get_result
-    //     )
-
-
-    // def _unlock_repository(self, repository):
-    //     # TODO LOG
-    //     call_restic(cmd='unlock', args=self._get_restic_global_opts(), env=self._get_restic_repository_envs(repository), logger=self._logger)
 
 
 
