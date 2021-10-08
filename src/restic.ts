@@ -18,15 +18,13 @@ export interface ResticOpts {
 
 class ResticCall extends EventEmitter {
     protected process?: ChildProcess
-    protected uuid: string
+    protected uuid: string = uuid4()
     protected logger: Logger
 
     constructor(command: string, args: string[], opts: ResticOpts) {
         super()
 
-        this.uuid = command + '-' + uuid4()
-
-        this.logger = opts.logger.child({ restic: this.uuid })
+        this.logger = opts.logger.child({ resticCallUuid : this.uuid })
 
         if (command === 'dump' && !opts.outputStream) {
             throw new Error('Please provide outputStream for dump')
@@ -65,7 +63,7 @@ class ResticCall extends EventEmitter {
         const stderr: string[] = []
 
         this.logger.info('Starting', {
-            spawn: {
+            resticCall: {
                 cmd: 'restic',
                 args: resticArgs,
                 env: resticEnv

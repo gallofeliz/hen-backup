@@ -8,9 +8,9 @@ export class Job extends EventEmitter {
     protected subjects: Record<string, string>
     protected priority: string | number
     protected fn: (job: Job) => Promise<any>
-    protected state: 'new' | 'running' | 'aborting' | 'success' | 'failure' | 'aborted' = 'new'
+    protected state: 'new' | 'running' | 'aborting' | 'success' | 'failure' | 'aborted' | 'canceled' = 'new'
     protected result: Promise<any>
-    protected uuid: string
+    protected uuid: string = uuid4()
     protected createdAt: Date = new Date
     protected resolve?: (data: any) => void
     protected reject?: (error: Error) => void
@@ -43,12 +43,16 @@ export class Job extends EventEmitter {
             this.reject = reject
         })
 
-        this.uuid = this.operation + '('
-            + Object.keys(this.subjects).map(subjectName => subjectName + ':' + this.subjects[subjectName]).join(',')
-            + ')' + '-' + uuid4()
-
         this.logger = logger.child({
-            job: this.uuid
+            job: {
+                uuid: this.uuid,
+                operation: this.operation,
+                subjects: this.subjects
+            }
+        })
+
+        this.logger.info('Job creation', {
+            jobState: this.state
         })
     }
 
@@ -89,9 +93,10 @@ export class Job extends EventEmitter {
             throw new Error('Already started')
         }
 
-        this.logger.info('Let\'s run !')
-
         this.state = 'running'
+        this.logger.info('Let\'s run the job !', {
+            jobState: this.state
+        })
 
         try {
             const result = await this.fn(this)
@@ -101,12 +106,16 @@ export class Job extends EventEmitter {
                 throw new Error('Aborted')
             }
 
-            this.logger.info('Success :)')
             this.resolve!(result)
             this.state = 'success'
+            this.logger.info('Success :)', {
+                jobState: this.state
+            })
         } catch (e) {
             this.state = (this.state as string) === 'aborting' ? 'aborted' : 'failure'
-            this.logger.info('Sad day, ' + this.state)
+            this.logger.info('failure', {
+                jobState: this.state
+            })
             this.reject!(e as Error)
         }
 
@@ -119,7 +128,7 @@ export class Job extends EventEmitter {
         return this.result
     }
 
-    public async abort() {
+    public abort() {
         if (this.state !== 'running') {
             return
         }
@@ -128,15 +137,30 @@ export class Job extends EventEmitter {
             throw new Error('Abort not handled')
         }
 
-        this.logger.info('Requested abort')
         this.state = 'aborting'
+        this.logger.info('Requested abort', {
+            jobState: this.state
+        })
         this.emit('abort')
+    }
+
+    public cancel() {
+        if (this.state !== 'new') {
+            throw new Error('Unable to cancel a non-new job')
+        }
+
+        this.state = 'canceled'
+        this.logger.info('Requested cancel', {
+            jobState: this.state
+        })
+        this.reject!(new Error('Canceled'))
     }
 }
 
 export default class JobsManager {
     protected queue: Job[] = []
     protected running: Job[] = []
+    protected history: Job[] = new Array(20)
     protected started = false
     protected logger: Logger
 
@@ -159,6 +183,10 @@ export default class JobsManager {
         this.running.forEach(job => job.abort())
     }
 
+    public getHistory() {
+        return this.history
+    }
+
     public addJob(job: Job, canBeDuplicate: boolean = false, getResult = false) {
         if (job.getState() !== 'new') {
             throw new Error('Job already started')
@@ -167,6 +195,9 @@ export default class JobsManager {
         if (this.queue.includes(job)) {
             return
         }
+
+        this.history.shift()
+        this.history.push(job)
 
         if (!canBeDuplicate) {
             const equalJob = this.queue.find(inQueueJob => {
@@ -177,9 +208,12 @@ export default class JobsManager {
             if (equalJob) {
                 if (equalJob.getPriority() === job.getPriority()) {
                     this.logger.info('Not queueing job because of duplicate', { job: job.getUuid() })
+                    job.cancel()
                     return
                 }
                 this.queue.splice(this.queue.indexOf(equalJob), 1)
+                this.logger.info('Canceling previous job on duplicate', { job: job.getUuid(), previousJob: job.getUuid() })
+                equalJob.cancel()
             }
         }
 
