@@ -1,10 +1,11 @@
 import loadConfig from './config'
-import Logger from './logger'
+import createLogger, { Logger } from './logger'
 import Daemon from './daemon'
 import Api from './api'
 
 const config = loadConfig()
-const logger = new Logger('main', config.log.level)
+const logger = createLogger(config.log.level)
+
 logger.info('Starting', { config })
 
 // Creating Daemon

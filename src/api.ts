@@ -1,4 +1,4 @@
-import Logger from './logger'
+import { Logger } from './logger'
 import { Config } from './config'
 import Daemon from './daemon'
 
@@ -6,7 +6,7 @@ export default class Api {
     protected logger: Logger
 
     constructor(config: Config['api'], daemon: Daemon, logger: Logger) {
-        this.logger = logger.child('api')
+        this.logger = logger
 
         // if 'api' in self._config:
         //     self._http_server = HttpServer(
@@ -24,11 +24,8 @@ export default class Api {
     }
 
     public start() {
-        this.logger.info('Starting')
-
     }
 
     public stop() {
-        this.logger.info('Stopping')
     }
 }

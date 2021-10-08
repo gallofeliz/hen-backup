@@ -1,4 +1,6 @@
 import { EventEmitter } from 'events'
+import { v4 as uuid4 } from 'uuid'
+import { Logger } from './logger'
 
 export class Job extends EventEmitter {
     protected trigger: string | null
@@ -6,15 +8,24 @@ export class Job extends EventEmitter {
     protected subjects: Record<string, string>
     protected priority: string | number
     protected fn: (job: Job) => Promise<any>
-    protected state: 'new' | 'running' | 'success' | 'failure' = 'new'
+    protected state: 'new' | 'running' | 'aborting' | 'success' | 'failure' | 'aborted' = 'new'
     protected result: Promise<any>
+    protected uuid: string
     protected createdAt: Date = new Date
     protected resolve?: (data: any) => void
     protected reject?: (error: Error) => void
+    protected logger: Logger
 
     constructor(
-        { trigger, operation, subjects, fn, priority = 'normal' }:
-        { trigger: string | null, operation: string, subjects: Record<string, string>, fn: (job: Job) => Promise<any>, priority?: string }
+        { trigger, operation, subjects, fn, priority = 'normal', logger }:
+        {
+            trigger: string | null,
+            operation: string,
+            subjects: Record<string, string>,
+            fn: (job: Job) => Promise<any>,
+            logger: Logger,
+            priority?: string
+        }
     ) {
         super()
 
@@ -31,6 +42,14 @@ export class Job extends EventEmitter {
             this.resolve = resolve
             this.reject = reject
         })
+
+        this.uuid = this.operation + '('
+            + Object.keys(this.subjects).map(subjectName => subjectName + ':' + this.subjects[subjectName]).join(',')
+            + ')' + '-' + uuid4()
+
+        this.logger = logger.child({
+            job: this.uuid
+        })
     }
 
     public getState() {
@@ -43,6 +62,14 @@ export class Job extends EventEmitter {
 
     public getTrigger() {
         return this.trigger
+    }
+
+    public getLogger() {
+        return this.logger
+    }
+
+    public getUuid() {
+        return this.uuid
     }
 
     public getOperation() {
@@ -62,15 +89,28 @@ export class Job extends EventEmitter {
             throw new Error('Already started')
         }
 
+        this.logger.info('Let\'s run !')
+
         this.state = 'running'
 
         try {
-            this.resolve!(await this.fn(this))
+            const result = await this.fn(this)
+
+            // Stupid Typescript ...
+            if ((this.state as string) === 'aborting') {
+                throw new Error('Aborted')
+            }
+
+            this.logger.info('Success :)')
+            this.resolve!(result)
             this.state = 'success'
         } catch (e) {
-            this.state = 'failure'
+            this.state = (this.state as string) === 'aborting' ? 'aborted' : 'failure'
+            this.logger.info('Sad day, ' + this.state)
             this.reject!(e as Error)
         }
+
+        this.removeAllListeners('abort')
 
         return this.getResult()
     }
@@ -80,6 +120,16 @@ export class Job extends EventEmitter {
     }
 
     public async abort() {
+        if (this.state !== 'running') {
+            return
+        }
+
+        if (this.listenerCount('abort') === 0) {
+            throw new Error('Abort not handled')
+        }
+
+        this.logger.info('Requested abort')
+        this.state = 'aborting'
         this.emit('abort')
     }
 }
@@ -88,6 +138,11 @@ export default class JobsManager {
     protected queue: Job[] = []
     protected running: Job[] = []
     protected started = false
+    protected logger: Logger
+
+    public constructor(logger: Logger) {
+        this.logger = logger
+    }
 
     public start() {
         if (this.started) {
@@ -121,11 +176,14 @@ export default class JobsManager {
 
             if (equalJob) {
                 if (equalJob.getPriority() === job.getPriority()) {
+                    this.logger.info('Not queueing job because of duplicate', { job: job.getUuid() })
                     return
                 }
                 this.queue.splice(this.queue.indexOf(equalJob), 1)
             }
         }
+
+        this.logger.info('Queueing job', { job: job.getUuid() })
 
         if (this.started && job.getPriority() === 'immediate' && this.queue.length > 0) {
             this.run(job)
@@ -146,7 +204,7 @@ export default class JobsManager {
             return job.getResult()
         }
 
-        job.getResult().catch(console.error)
+        job.getResult().catch(() => {})
     }
 
     protected isPrioSup(jobA: Job, jobB: Job): boolean {
