@@ -113,7 +113,7 @@ export class Job extends EventEmitter {
             })
         } catch (e) {
             this.state = (this.state as string) === 'aborting' ? 'aborted' : 'failure'
-            this.logger.info('failure', {
+            this.logger.error('failure', {
                 jobState: this.state
             })
             this.reject!(e as Error)

@@ -80,8 +80,8 @@ class ResticCall extends EventEmitter {
             resticArgs.push('--limit-download', sizeToKiB(opts.downloadLimit).toString())
         }
 
-        const stdout: string[] = []
-        const stderr: string[] = []
+        let stdout: string = ''
+        let stderr: string = ''
 
         this.logger.info('Starting', {
             resticCall: {
@@ -97,25 +97,27 @@ class ResticCall extends EventEmitter {
         if (opts.outputStream) {
             this.logger.info('Redirecting outputStream')
             process.stdout.pipe(opts.outputStream)
-        } else if (json) {
+        } else {
             process.stdout.on('data', (data) => {
                 const strData = data.toString()
                 this.logger.info('STDOUT', { data: strData })
-                stdout.push(strData)
+                if (json) {
+                    stdout += strData
+                }
             })
         }
 
         process.stderr.on('data', data => {
             const strData = data.toString()
             this.logger.info('STDERR', { data: strData })
-            stderr.push(strData)
+            stderr += strData
         })
 
         try {
             const [exitCode]: [number] = await once(process, 'exit') as [number]
             this.logger.info('exitCode ' + exitCode)
             if (exitCode > 0) {
-                return this.emit('error', new Error('Restic error : ' + stderr.join('\n')))
+                return this.emit('error', new Error('Restic error : ' + stderr))
             }
         } catch (e) {
             return this.emit('error', e)
@@ -125,7 +127,7 @@ class ResticCall extends EventEmitter {
             return this.emit('finish')
         }
 
-        this.emit('finish', multilineJson ? stdout.map((line) => JSON.parse(line)) : JSON.parse(stdout.join('')))
+        this.emit('finish', multilineJson ? stdout.trim().split('\n').map((line) => JSON.parse(line)) : JSON.parse(stdout))
     }
 
     public abort() {

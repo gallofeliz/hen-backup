@@ -7,6 +7,9 @@ const secrets = ['password', 'key', 'secret', 'auth', 'token', 'credential']
 
 function sanitize(variable: any): any {
     if (typeof variable === 'object') {
+        if (variable instanceof Error) {
+            return variable.toString()
+        }
         for (const key in variable) {
             if (typeof key !== 'string') {
                 continue

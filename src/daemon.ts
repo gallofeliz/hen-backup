@@ -150,45 +150,58 @@ export default class Daemon {
         )
     }
 
-    public getSnapshot(repositoryName: string, snapshotId: string) {
+    public getSnapshot(repositoryName: string, snapshotId: string, trigger: 'api') {
         const repository = this.config.repositories[repositoryName]
 
         if (!repository) {
             throw new Error('Unknown repository ' + repositoryName)
         }
 
-    // def explain_snapshot(self, repository_name, snapshot_id, priority='immediate'):
-    //     repository = self._config['repositories'][repository_name]
+        return this.jobsManager.addJob(
+            new Job({
+                logger: this.logger,
+                trigger: trigger,
+                operation: 'getSnapshot',
+                subjects: {repository: repositoryName, snapshot: snapshotId},
+                fn: async (job) => {
+                    await this.unlockRepository(repository, job)
 
-    //     response = call_restic(
-    //                     cmd='ls',
-    //                     args=['--long', snapshot_id],
-    //                     env=self._get_restic_repository_envs(repository),
-    //                     logger=self._logger,
-    //                     json=True
-    //                 )['stdout']
+                    const resticCall = this.restic.call(
+                        'ls',
+                        [
+                            '--long',
+                            snapshotId
+                        ],
+                        {
+                            repository: repository,
+                            logger: job.getLogger()
+                        }
+                    )
 
-    //     objects = response[1:]
-    //     tags = response[0]['tags']
-    //     backup_name = None
+                    job.once('abort', () => resticCall.abort())
 
-    //     for tag in tags:
-    //         if tag[0:7] == 'backup-':
-    //             backup_name = tag[7:]
+                    const [[infos, ...objects]] = await once(resticCall, 'finish')
 
+                    if (infos.hostname !== this.config.hostname) {
+                        throw new Error('Unknown snapshot ' + snapshotId)
+                    }
 
-    //     for obj in objects:
-    //         obj['permissions'] = 'unknown'
-
-    //     return {
-    //         'repository_name': repository_name,
-    //         'backup_name': backup_name,
-    //         'snapshot_id': snapshot_id,
-    //         'objects': objects
-    //     }
+                    return {
+                        repository: repositoryName,
+                        backup: this.extractValueFromTags(infos.tags, 'backup'),
+                        job: this.extractValueFromTags(infos.tags, 'job'),
+                        snapshot: snapshotId,
+                        objects: objects.map((o: object) => ({permissions: 'unknown', ...o}))
+                    }
+                },
+                priority: 'immediate'
+            }),
+            true,
+            true
+        )
     }
 
-    public async checkRepository(repositoryName: string, trigger:'scheduler' | 'api', priority?: string) {
+    public checkRepository(repositoryName: string, trigger:'scheduler' | 'api', priority?: string) {
         const repository = this.config.repositories[repositoryName]
 
         if (!repository) {
@@ -217,7 +230,7 @@ export default class Daemon {
 
                     await once(resticCall, 'finish')
                 },
-                priority: priority || repository.check!.priority
+                priority: priority || (repository.check && repository.check!.priority)
             })
         )
     }
@@ -246,6 +259,7 @@ export default class Daemon {
                             if (beforeHook.onfailure === 'stop') {
                                 throw e
                             }
+                            job.getLogger().warning('beforeHook failed', {error: e})
                             if (beforeHook.onfailure !== 'ignore') {
                                 beforeHookOk = false
                             }
@@ -288,14 +302,14 @@ export default class Daemon {
 
                             await once(resticCall, 'finish')
                         } catch (e) {
+                            job.getLogger().warning('repository backup failed', {repository: repositoryName, error: e})
                             allRepositoryOk = false
                         }
                     }
 
-                    if (!allRepositoryOk || !allRepositoryOk) {
+                    if (!beforeHookOk || !allRepositoryOk) {
                         throw new Error('Hook or repository backup failed')
                     }
-
                 },
                 priority: priority || backup.priority
             })
@@ -309,104 +323,79 @@ export default class Daemon {
             throw new Error('Unknown backup ' + backupName)
         }
 
-        throw new Error('Not implemented');
-    // def prune(self, backup_name, priority=None, get_result=False):
-    //     backup = self._config['backups'][backup_name]
-    //     prune = backup['prune']
+        if (!backup.prune || !backup.prune.retentionPolicy) {
+            throw new Error('No prune policy')
+        }
 
-    //     if not priority:
-    //         priority = prune.get('priority', 'normal')
+        return this.jobsManager.addJob(
+            new Job({
+                logger: this.logger,
+                trigger: trigger,
+                operation: 'prune',
+                subjects: {backup: backupName},
+                fn: async (job) => {
+                    let allRepositoryOk = true
 
-    //     self._logger.info('prune requested', extra={
-    //         'component': 'daemon',
-    //         'action': 'prune',
-    //         'backup': backup['name'],
-    //         'status': 'queuing'
-    //     })
+                    for (const repositoryName of backup.repositories) {
+                        const repository = this.config.repositories[repositoryName]
 
-    //     def do_prune():
-    //         self._logger.info('Starting prune', extra={
-    //             'component': 'daemon',
-    //             'action': 'prune',
-    //             'backup': backup['name'],
-    //             'status': 'starting'
-    //         })
+                        if (job.getState() === 'aborting') {
+                            return
+                        }
 
-    //         all_repo_ok = True
-    //         for repository_name in backup['repositories']:
-    //             repository = self._config['repositories'][repository_name]
-    //             self._logger.info('Starting prune on repository', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'prune',
-    //                 'subaction': 'prune_repository',
-    //                 'backup': backup['name'],
-    //                 'repository': repository['name'],
-    //                 'status': 'starting'
-    //             })
-    //             try:
-    //                 options = ['--prune', '--tag', quote('backup-' + backup['name']), '--host', self._config['hostname']] + self._get_restic_global_opts(backup)
+                        try {
+                            await this.unlockRepository(repository, job)
 
-    //                 for retention_policy_key in prune['retentionPolicy']:
-    //                     retention_policy_value = prune['retentionPolicy'][retention_policy_key]
+                            const retentionPolicyMapping: Record<string, string> = {
+                                'nbOfHourly': 'hourly',
+                                'nbOfdaily': 'daily',
+                                'nbOfWeekly': 'weekly',
+                                'nbOfMonthly': 'monthly',
+                                'nbOfYearly': 'yearly',
+                                'minTime': 'within'
+                            }
 
-    //                     mapping = {
-    //                         'nbOfHourly': 'hourly',
-    //                         'nbOfdaily': 'daily',
-    //                         'nbOfWeekly': 'weekly',
-    //                         'nbOfMonthly': 'monthly',
-    //                         'nbOfYearly': 'yearly',
-    //                         'minTime': 'within'
-    //                     }
+                            const retentionPolicyArgs: string[] = _.flatten(_.map(backup.prune!.retentionPolicy, (retentionValue, retentionKey) => {
+                                if (!retentionPolicyMapping[retentionKey]) {
+                                    throw new Error('Unknown policy rule ' + retentionKey)
+                                }
 
-    //                     if not retention_policy_key in mapping:
-    //                         raise Exception('Unknown policy rule ' + retention_policy_key)
+                                return ['--keep-' + retentionPolicyMapping[retentionKey], retentionValue!.toString()]
+                            })) as string[]
 
-    //                     options.append('--keep-' + mapping[retention_policy_key])
-    //                     options.append(str(retention_policy_value))
+                            const resticCall = this.restic.call(
+                                'forget',
+                                [
+                                    '--prune',
+                                    '--tag',
+                                    this.formatTagValue('backup', backup.name),
+                                    '--host',
+                                    this.config.hostname
+                                ].concat(retentionPolicyArgs),
+                                {
+                                    repository: repository,
+                                    logger: job.getLogger(),
+                                    ...backup.uploadLimit !== undefined && { uploadLimit: backup.uploadLimit },
+                                    ...backup.downloadLimit !== undefined && { downloadLimit: backup.downloadLimit },
+                                }
+                            )
 
-    //                 self._unlock_repository(repository)
-    //                 call_restic(cmd='forget', args=options, env=self._get_restic_repository_envs(repository), logger=self._logger)
-    //                 self._logger.info('Prune on repository ended :)', extra={
-    //                     'component': 'daemon',
-    //                     'action': 'prune',
-    //                     'subaction': 'prune_repository',
-    //                     'backup': backup['name'],
-    //                     'repository': repository['name'],
-    //                     'status': 'success'
-    //                 })
-    //             except Exception as e:
-    //                 self._logger.exception('Prune on repository failed :(', extra={
-    //                     'component': 'daemon',
-    //                     'subaction': 'prune_repository',
-    //                     'action': 'prune',
-    //                     'backup': backup['name'],
-    //                     'repository': repository['name'],
-    //                     'status': 'failure'
-    //                 })
-    //                 all_repo_ok = False
+                            job.once('abort', () => resticCall.abort())
 
-    //         if all_repo_ok:
-    //             self._logger.info('Prune ended :)', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'prune',
-    //                 'backup': backup['name'],
-    //                 'status': 'success'
-    //             })
-    //         else:
-    //             self._logger.error('Prune failed (prune in repository failed) :(', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'prune',
-    //                 'backup': backup['name'],
-    //                 'status': 'failure'
-    //             })
+                            await once(resticCall, 'finish')
+                        } catch (e) {
+                            job.getLogger().warning('repository prune failed', {repository: repositoryName, error: e})
+                            allRepositoryOk = false
+                        }
+                    }
 
-    //     self._task_manager.add_task(
-    //         task=Task(fn=do_prune, priority=priority, id="prune_%s" % backup_name),
-    //         ignore_if_duplicate=True,
-    //         get_result=get_result
-    //     )
-
-
+                    if (!allRepositoryOk) {
+                        throw new Error('Repository prune failed')
+                    }
+                },
+                priority: priority || backup.prune.priority
+            })
+        )
     }
 
     protected async handleHook(hook: Hook, job: Job) {
@@ -438,6 +427,7 @@ export default class Daemon {
             this.fnSchedulers.push(
                 new FnScheduler(
                     () => this.checkRepository(repository.name, 'scheduler'),
+                    this.logger,
                     repository.check!.schedules,
                     true
                 )
@@ -450,6 +440,7 @@ export default class Daemon {
                 this.fnSchedulers.push(
                     new FnScheduler(
                         () => this.backup(backup.name, 'scheduler'),
+                        this.logger,
                         backup.schedules,
                         true
                     )
@@ -460,6 +451,7 @@ export default class Daemon {
                 this.fsWatchers.push(
                     new FsWatcher(
                         () => this.backup(backup.name, 'fswatcher'),
+                        this.logger,
                         backup.paths,
                         backup.excludes,
                         backup.watch.wait && backup.watch.wait.min,
@@ -472,8 +464,9 @@ export default class Daemon {
                 this.fnSchedulers.push(
                     new FnScheduler(
                         () => this.prune(backup.name, 'scheduler'),
+                        this.logger,
                         backup.prune.schedules,
-                        false
+                        true
                     )
                 )
             }

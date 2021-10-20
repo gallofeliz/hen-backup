@@ -1,16 +1,19 @@
 import { durationToSeconds } from './utils'
 import cron from 'cron-parser'
+import { Logger } from './logger'
 
 export default class FnScheduler {
     protected fn: Function
     protected schedules: string[]
     protected runOnStart: boolean
     protected timeoutId: NodeJS.Timeout | null = null
+    protected logger: Logger
 
-    constructor(fn: Function, schedules: string[], runOnStart: boolean) {
+    constructor(fn: Function, logger: Logger, schedules: string[], runOnStart: boolean) {
         this.fn = fn
         this.schedules = schedules
         this.runOnStart = runOnStart
+        this.logger = logger
     }
 
     protected getNextScheduleTime(): number {
@@ -27,14 +30,20 @@ export default class FnScheduler {
         return nextTimes.sort()[0]
     }
 
-    protected run(starting = false) {
+    protected async run(starting = false) {
+        // We also can put at the end to avoid multiple exec
         this.timeoutId = setTimeout(() => this.run(), this.getNextScheduleTime() * 1000)
 
         if (starting && !this.runOnStart) {
             return
         }
 
-        this.fn()
+        try {
+            await this.fn()
+        } catch (e) {
+            // Thanks to async/await I can cheat with no promise ahah
+            this.logger.error('Fn call fails', {fn: this.fn.toString(), error: e})
+        }
     }
 
     public start() {

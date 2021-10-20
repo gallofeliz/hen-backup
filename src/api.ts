@@ -54,7 +54,7 @@ export default class Api {
         })
 
         apiRouter.get('/snapshots/:repository/:snapshot', async (req, res) => {
-            res.send(await daemon.getSnapshot(req.params.repository, req.params.snapshot))
+            res.send(await daemon.getSnapshot(req.params.repository, req.params.snapshot, 'api'))
         })
     }
 

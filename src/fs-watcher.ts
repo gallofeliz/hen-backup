@@ -1,5 +1,6 @@
 import { durationToSeconds } from './utils'
 import chokidar from 'chokidar'
+import { Logger } from './logger'
 
 interface WaitPending {
     start: number
@@ -14,10 +15,12 @@ export default class FsWatcher {
     protected waitMaxMs: number | null
     protected watcher: chokidar.FSWatcher | null = null
     protected waitPending: WaitPending | null = null
+    protected logger: Logger
 
-    constructor(fn: Function, paths: string[], ignore?: string[], waitMin?: string, waitMax?: string) {
+    constructor(fn: Function, logger: Logger, paths: string[], ignore?: string[], waitMin?: string, waitMax?: string) {
         this.fn = fn
         this.paths = paths
+        this.logger = logger
         this.ignore = ignore || []
         this.waitMinMs = waitMin ? durationToSeconds(waitMin) * 1000 : null
         this.waitMaxMs = waitMax ? durationToSeconds(waitMax) * 1000 : this.waitMinMs
@@ -28,13 +31,10 @@ export default class FsWatcher {
             return
         }
 
-        console.log('fs watcher', this.paths, this.ignore, this.waitMinMs)
-
         this.watcher = chokidar.watch(this.paths, {
             ignored: this.ignore,
             ignoreInitial: true
         }).on('all', (e, p) => {
-            console.log('watch event', e, p)
             this.onFileEvent()
         })
     }
@@ -53,18 +53,21 @@ export default class FsWatcher {
         }
     }
 
-    protected run() {
-        this.fn()
-
+    protected async run() {
         if (this.waitPending) {
             clearTimeout(this.waitPending.timeout)
             this.waitPending = null
         }
+
+        try {
+            await this.fn()
+        } catch (e) {
+            // Thanks to async/await I can cheat with no promise ahah
+            this.logger.error('Fn call fails', {fn: this.fn.toString(), error: e})
+        }
     }
 
     // TODO FIX BAD LOGIC
-
-
     protected onFileEvent() {
         if (!this.waitMinMs) {
             return this.run()
@@ -80,9 +83,10 @@ export default class FsWatcher {
             return
         }
 
-        if (this.waitPending.start + this.waitMaxMs! < now) {
+        if (this.waitPending.start + this.waitMaxMs! > now) {
             clearTimeout(this.waitPending.timeout)
-            this.waitPending.timeout = setTimeout(() => this.run(), this.waitMinMs)
+            this.waitPending.timeout = setTimeout(() => this.run(), this.waitMinMs) // TODO calc remaining
+            return
         }
 
         this.run()
