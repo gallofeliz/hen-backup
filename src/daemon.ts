@@ -3,7 +3,7 @@ import { Config, Hook } from './config'
 import FnScheduler from './fn-scheduler'
 import JobsManager, { Job } from './jobs-manager'
 import FsWatcher from './fs-watcher'
-import callRestic from './restic'
+import Restic from './restic'
 import { once } from 'events'
 import _ from 'lodash'
 import { durationToSeconds } from './utils'
@@ -16,11 +16,17 @@ export default class Daemon {
     protected jobsManager: JobsManager
     protected started = false
     protected fsWatchers: FsWatcher[] = []
+    protected restic: Restic
 
-    constructor(config: Config, logger: Logger) {
+    constructor(config: Config, logger: Logger) {
         this.config = config
         this.logger = logger
         this.jobsManager = new JobsManager(logger)
+        this.restic = new Restic({
+            uploadLimit: this.config.uploadLimit,
+            downloadLimit: this.config.downloadLimit,
+            logger: this.logger
+        })
         this.configureTriggers()
     }
 
@@ -71,16 +77,123 @@ export default class Daemon {
         })))
     }
 
-    public listSnapshots(criterias: {backupName?: string, repositoryName?: string}) {
+    public listSnapshots(criterias: {backupName?: string, repositoryName?: string}, trigger: 'api') {
+        if (criterias.backupName && !this.config.backups[criterias.backupName]) {
+            throw new Error('Unknown backup ' + criterias.backupName)
+        }
 
+        if (criterias.repositoryName && !this.config.repositories[criterias.repositoryName]) {
+            throw new Error('Unknown repository ' + criterias.repositoryName)
+        }
+
+        return this.jobsManager.addJob(
+            new Job({
+                logger: this.logger,
+                trigger: trigger,
+                operation: 'listSnapshots',
+                subjects: criterias,
+                fn: async (job) => {
+                    const args = ['--host', this.config.hostname]
+
+                    if (criterias.backupName) {
+                        args.push('--tag', 'backup-' + criterias.backupName)
+                    }
+
+                    let searchRepositories: string[]
+
+                    if (criterias.repositoryName) {
+                        searchRepositories = [criterias.repositoryName]
+                    } else if (criterias.backupName) {
+                        searchRepositories = this.config.backups[criterias.backupName].repositories
+                    } else {
+                        searchRepositories = Object.keys(this.config.repositories)
+                    }
+
+                    let snapshots: Record<string, any>[] = []
+
+                    for (const repositoryName of searchRepositories) {
+                        const repository = this.config.repositories[repositoryName]
+
+                        await this.unlockRepository(repository, job)
+
+                        const resticCall = this.restic.call(
+                            'snapshots',
+                            args,
+                            {
+                                repository: repository,
+                                logger: job.getLogger()
+                            }
+                        )
+
+                        job.once('abort', () => resticCall.abort())
+
+                        const [resticSnapshots]: Array<Record<string, any>[]> = await once(resticCall, 'finish')
+                        snapshots = snapshots.concat(
+                            resticSnapshots.map(resticSnapshot => ({
+                                date: resticSnapshot['time'],
+                                //hostname: resticSnapshot['hostname'],
+                                backup: this.extractValueFromTags(resticSnapshot.tags, 'backup'),
+                                job: this.extractValueFromTags(resticSnapshot.tags, 'job'),
+                                repository: repositoryName,
+                                id: resticSnapshot['id']
+                            }))
+                        )
+                    }
+
+                    return _.sortBy(snapshots, 'date')
+
+                },
+                priority: 'immediate'
+            }),
+            true,
+            true
+        )
     }
 
     public getSnapshot(repositoryName: string, snapshotId: string) {
+        const repository = this.config.repositories[repositoryName]
 
+        if (!repository) {
+            throw new Error('Unknown repository ' + repositoryName)
+        }
+
+    // def explain_snapshot(self, repository_name, snapshot_id, priority='immediate'):
+    //     repository = self._config['repositories'][repository_name]
+
+    //     response = call_restic(
+    //                     cmd='ls',
+    //                     args=['--long', snapshot_id],
+    //                     env=self._get_restic_repository_envs(repository),
+    //                     logger=self._logger,
+    //                     json=True
+    //                 )['stdout']
+
+    //     objects = response[1:]
+    //     tags = response[0]['tags']
+    //     backup_name = None
+
+    //     for tag in tags:
+    //         if tag[0:7] == 'backup-':
+    //             backup_name = tag[7:]
+
+
+    //     for obj in objects:
+    //         obj['permissions'] = 'unknown'
+
+    //     return {
+    //         'repository_name': repository_name,
+    //         'backup_name': backup_name,
+    //         'snapshot_id': snapshot_id,
+    //         'objects': objects
+    //     }
     }
 
     public async checkRepository(repositoryName: string, trigger:'scheduler' | 'api', priority?: string) {
         const repository = this.config.repositories[repositoryName]
+
+        if (!repository) {
+            throw new Error('Unknown repository ' + repositoryName)
+        }
 
         return this.jobsManager.addJob(
             new Job({
@@ -91,12 +204,10 @@ export default class Daemon {
                 fn: async (job) => {
                     await this.unlockRepository(repository, job)
 
-                    const resticCall = callRestic(
+                    const resticCall = this.restic.call(
                         'check',
                         [],
                         {
-                            uploadLimit: this.config.uploadLimit,
-                            downloadLimit: this.config.downloadLimit,
                             repository: repository,
                             logger: job.getLogger()
                         }
@@ -113,6 +224,10 @@ export default class Daemon {
 
     public backup(backupName: string, trigger:'scheduler' | 'fswatcher' | 'api', priority?: string) {
         const backup = this.config.backups[backupName]
+
+        if (!backup) {
+            throw new Error('Unknown backup ' + backupName)
+        }
 
         return this.jobsManager.addJob(
             new Job({
@@ -149,21 +264,23 @@ export default class Daemon {
                         try {
                             await this.unlockRepository(repository, job)
 
-                            const resticCall = callRestic(
+                            const resticCall = this.restic.call(
                                 'backup',
                                 [
                                     '--tag',
-                                    'backup-' + backup.name,
+                                    this.formatTagValue('backup', backup.name),
+                                    '--tag',
+                                    this.formatTagValue('job', job.getUuid()),
                                     '--host',
                                     this.config.hostname,
                                     ...backup.paths,
                                     ...backup.excludes ? backup.excludes.map(exclude => '--exclude=' + exclude) : []
                                 ],
                                 {
-                                    uploadLimit: backup.uploadLimit ?? this.config.uploadLimit,
-                                    downloadLimit: backup.downloadLimit ?? this.config.downloadLimit,
                                     repository: repository,
-                                    logger: job.getLogger()
+                                    logger: job.getLogger(),
+                                    ...backup.uploadLimit !== undefined && { uploadLimit: backup.uploadLimit },
+                                    ...backup.downloadLimit !== undefined && { downloadLimit: backup.downloadLimit },
                                 }
                             )
 
@@ -186,309 +303,13 @@ export default class Daemon {
     }
 
     public prune(backupName: string, trigger:'scheduler' | 'api', priority?: string) {
-        console.log('prune', backupName)
-    }
+        const backup = this.config.backups[backupName]
 
-    protected async handleHook(hook: Hook, job: Job) {
-        if (hook.type !== 'http') {
-            throw new Error('Only http implemented')
+        if (!backup) {
+            throw new Error('Unknown backup ' + backupName)
         }
 
-        const request = got({
-            method: hook.method as GotMethod || 'GET',
-            url: hook.url,
-            timeout: hook.timeout ? durationToSeconds(hook.timeout) * 1000 : undefined,
-            retry: hook.retries || 0,
-            hooks: {
-                beforeRequest: [options  => {job.getLogger().info('Calling hook ' + options.url)}],
-                afterResponse: [response => { job.getLogger().info('Hook returned code ' + response.statusCode) ; return response }],
-                beforeError: [error => { job.getLogger().info('Hook returned error ' + error.message) ; return error }]
-            }
-        })
-
-        job.once('abort', () => request.cancel())
-
-        await request
-    }
-
-    protected configureTriggers() {
-        Object.values(this.config.repositories)
-        .filter((repository) => repository.check)
-        .forEach((repository) => {
-            this.fnSchedulers.push(
-                new FnScheduler(
-                    () => this.checkRepository(repository.name, 'scheduler'),
-                    repository.check!.schedules,
-                    true
-                )
-            )
-        })
-
-        Object.values(this.config.backups)
-        .forEach((backup) => {
-            if (backup.schedules) {
-                this.fnSchedulers.push(
-                    new FnScheduler(
-                        () => this.backup(backup.name, 'scheduler'),
-                        backup.schedules,
-                        true
-                    )
-                )
-            }
-
-            if (backup.watch) {
-                this.fsWatchers.push(
-                    new FsWatcher(
-                        () => this.backup(backup.name, 'fswatcher'),
-                        backup.paths,
-                        backup.excludes,
-                        backup.watch.wait && backup.watch.wait.min,
-                        backup.watch.wait && backup.watch.wait.max,
-                    )
-                )
-            }
-
-            if (backup.prune && backup.prune.schedules) {
-                this.fnSchedulers.push(
-                    new FnScheduler(
-                        () => this.prune(backup.name, 'scheduler'),
-                        backup.prune.schedules,
-                        false
-                    )
-                )
-            }
-
-        })
-
-    }
-
-    protected initRepository(repositoryName: string) {
-        const repository = this.config.repositories[repositoryName]
-
-        this.jobsManager.addJob(
-            new Job({
-                logger: this.logger,
-                trigger: null,
-                operation: 'init',
-                subjects: {repository: repositoryName},
-                fn: async (job) => {
-                    const resticCall = callRestic(
-                        'init',
-                        [],
-                        {
-                            uploadLimit: this.config.uploadLimit,
-                            downloadLimit: this.config.downloadLimit,
-                            repository: repository,
-                            logger: job.getLogger()
-                        }
-                    )
-
-                    job.once('abort', () => resticCall.abort())
-
-                    try {
-                        await once(resticCall, 'finish')
-                    } catch (e) {
-                        job.getLogger().info('Failed finish, ignoring because of probably already initialized')
-                    }
-                },
-                priority: 'next'
-            })
-        )
-    }
-
-    protected async unlockRepository(repository: Config['repositories'][0], job: Job) {
-        const resticCall = callRestic(
-            'unlock',
-            [],
-            {
-                uploadLimit: this.config.uploadLimit,
-                downloadLimit: this.config.downloadLimit,
-                repository: repository,
-                logger: job.getLogger()
-            }
-        )
-
-        job.once('abort', () => resticCall.abort())
-
-        await once(resticCall, 'finish')
-    }
-
-    // def list_snapshots(self, repository_name=None, backup_name=None, priority='immediate', sort='Date', reverse=False):
-    //     self._logger.info('list_snapshots requested', extra={
-    //         'component': 'daemon',
-    //         'action': 'list_snapshots',
-    //         'status': 'queuing'
-    //     })
-
-    //     def do_list_snapshots():
-    //         self._logger.info('list_snapshots starting', extra={
-    //             'component': 'daemon',
-    //             'action': 'list_snapshots',
-    //             'status': 'starting'
-    //         })
-
-    //         try:
-    //             args=self._get_restic_global_opts()
-    //             if backup_name:
-    //                 args = args + ['--tag', 'backup-' + backup_name]
-    //             args = args + ['--host', self._config['hostname']]
-
-    //             if repository_name:
-    //                 reponames_lookup = [repository_name]
-    //             elif backup_name:
-    //                 reponames_lookup = self._config['backups'][backup_name]['repositories']
-    //             else:
-    //                 reponames_lookup = self._config['repositories'].keys()
-
-    //             snapshots = []
-    //             for repo_name in reponames_lookup:
-    //                 repository = self._config['repositories'][repo_name]
-    //                 self._unlock_repository(repository)
-    //                 response = call_restic(
-    //                     cmd='snapshots',
-    //                     args=args,
-    //                     env=self._get_restic_repository_envs(repository),
-    //                     logger=self._logger,
-    //                     json=True
-    //                 )
-    //                 restic_snapshots = response['stdout']
-
-    //                 for raw_snapshot in restic_snapshots:
-    //                     _backup_name = None
-    //                     for tag in raw_snapshot['tags']:
-    //                         if tag[0:7] == 'backup-':
-    //                             _backup_name = tag[7:]
-    //                     snapshots.append({
-    //                         'Date': raw_snapshot['time'],
-    //                         'Hostname': raw_snapshot['hostname'],
-    //                         'Backup': _backup_name,
-    //                         'Repository': repo_name,
-    //                         'Id': raw_snapshot['id']
-    //                     })
-
-    //             self._logger.info('list_snapshots success', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'list_snapshots',
-    //                 'status': 'success'
-    //             })
-
-    //             return sorted(snapshots, key=lambda snapshot: snapshot[sort], reverse=reverse)
-    //         except Exception as e:
-    //             self._logger.info('list_snapshots failed', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'list_snapshots',
-    //                 'status': 'failure'
-    //             })
-
-    //             raise e
-
-    //     return self._task_manager.add_task(
-    //         task=Task(fn=do_list_snapshots, priority=priority),
-    //         ignore_if_duplicate=False,
-    //         get_result=True
-    //     )
-
-    // def explain_snapshot(self, repository_name, snapshot_id, priority='immediate'):
-    //     repository = self._config['repositories'][repository_name]
-
-    //     response = call_restic(
-    //                     cmd='ls',
-    //                     args=['--long', snapshot_id],
-    //                     env=self._get_restic_repository_envs(repository),
-    //                     logger=self._logger,
-    //                     json=True
-    //                 )['stdout']
-
-    //     objects = response[1:]
-    //     tags = response[0]['tags']
-    //     backup_name = None
-
-    //     for tag in tags:
-    //         if tag[0:7] == 'backup-':
-    //             backup_name = tag[7:]
-
-
-    //     for obj in objects:
-    //         obj['permissions'] = 'unknown'
-
-    //     return {
-    //         'repository_name': repository_name,
-    //         'backup_name': backup_name,
-    //         'snapshot_id': snapshot_id,
-    //         'objects': objects
-    //     }
-
-    // def get_path_history(self, repository_name, backup_name, path, priority='immediate'):
-    //     #sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD= restic find --long '/sources/.truc/.machin/super.txt' --json --tag backup-xxx --host host-xxx
-    //     pass
-
-    // def download_snapshot(self):
-    //     # TODO test with node
-
-    //     repository = self._config['repositories']['app2_dd']
-    //     # sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD=bca restic dump cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1 / > /tmp/prout.tar
-
-    //     response = call_restic(
-    //                     cmd='dump',
-    //                     args=['cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1', '/sources/.truc'],
-    //                     env=self._get_restic_repository_envs(repository),
-    //                     logger=self._logger,
-    //                     json=True
-    //                 )['stdout']
-
-
-
-
-    // def restore_snapshot(self, repository_name, snapshot, target_path=None, priority='normal', get_result=False):
-    //     if not target_path:
-    //         target_path = '/'
-
-    //     repository = self._config['repositories'][repository_name]
-
-    //     self._logger.info('restore_snapshot requested', extra={
-    //         'component': 'daemon',
-    //         'action': 'restore_snapshot',
-    //         'repository': repository['name'],
-    //         'snapshot': snapshot,
-    //         'status': 'queuing'
-    //     })
-
-    //     def do_restore_snapshot():
-    //         self._logger.info('Starting restore', extra={
-    //             'component': 'daemon',
-    //             'action': 'restore_snapshot',
-    //             'repository': repository_name,
-    //             'snapshot': snapshot,
-    //             'status': 'starting'
-    //         })
-    //         try:
-    //             args = [snapshot]
-    //             args = args + ['--target', target_path]
-    //             args = args + self._get_restic_global_opts()
-    //             self._unlock_repository(repository)
-    //             call_restic(cmd='restore', args=args, env=self._get_restic_repository_envs(repository), logger=self._logger)
-    //             self._logger.info('Restore ended', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'restore_snapshot',
-    //                 'repository': repository_name,
-    //                 'snapshot': snapshot,
-    //                 'status': 'success'
-    //             })
-    //         except Exception as e:
-    //             self._logger.exception('Restore failed', extra={
-    //                 'component': 'daemon',
-    //                 'action': 'restore_snapshot',
-    //                 'repository': repository_name,
-    //                 'snapshot': snapshot,
-    //                 'status': 'failure'
-    //             })
-
-    //     self._task_manager.add_task(
-    //         task=Task(fn=do_restore_snapshot, priority=priority, id="restore_snap_%s_%s" % (repository_name, snapshot)),
-    //         ignore_if_duplicate=True,
-    //         get_result=False
-    //     )
-
+        throw new Error('Not implemented');
     // def prune(self, backup_name, priority=None, get_result=False):
     //     backup = self._config['backups'][backup_name]
     //     prune = backup['prune']
@@ -586,7 +407,211 @@ export default class Daemon {
     //     )
 
 
+    }
+
+    protected async handleHook(hook: Hook, job: Job) {
+        if (hook.type !== 'http') {
+            throw new Error('Only http implemented')
+        }
+
+        const request = got({
+            method: hook.method as GotMethod || 'GET',
+            url: hook.url,
+            timeout: hook.timeout ? durationToSeconds(hook.timeout) * 1000 : undefined,
+            retry: hook.retries || 0,
+            hooks: {
+                beforeRequest: [options  => {job.getLogger().info('Calling hook ' + options.url)}],
+                afterResponse: [response => { job.getLogger().info('Hook returned code ' + response.statusCode) ; return response }],
+                beforeError: [error => { job.getLogger().info('Hook returned error ' + error.message) ; return error }]
+            }
+        })
+
+        job.once('abort', () => request.cancel())
+
+        await request
+    }
+
+    protected configureTriggers() {
+        Object.values(this.config.repositories)
+        .filter((repository) => repository.check)
+        .forEach((repository) => {
+            this.fnSchedulers.push(
+                new FnScheduler(
+                    () => this.checkRepository(repository.name, 'scheduler'),
+                    repository.check!.schedules,
+                    true
+                )
+            )
+        })
+
+        Object.values(this.config.backups)
+        .forEach((backup) => {
+            if (backup.schedules) {
+                this.fnSchedulers.push(
+                    new FnScheduler(
+                        () => this.backup(backup.name, 'scheduler'),
+                        backup.schedules,
+                        true
+                    )
+                )
+            }
+
+            if (backup.watch) {
+                this.fsWatchers.push(
+                    new FsWatcher(
+                        () => this.backup(backup.name, 'fswatcher'),
+                        backup.paths,
+                        backup.excludes,
+                        backup.watch.wait && backup.watch.wait.min,
+                        backup.watch.wait && backup.watch.wait.max,
+                    )
+                )
+            }
+
+            if (backup.prune && backup.prune.schedules) {
+                this.fnSchedulers.push(
+                    new FnScheduler(
+                        () => this.prune(backup.name, 'scheduler'),
+                        backup.prune.schedules,
+                        false
+                    )
+                )
+            }
+
+        })
+
+    }
+
+    protected initRepository(repositoryName: string) {
+        const repository = this.config.repositories[repositoryName]
+
+        this.jobsManager.addJob(
+            new Job({
+                logger: this.logger,
+                trigger: null,
+                operation: 'init',
+                subjects: {repository: repositoryName},
+                fn: async (job) => {
+                    const resticCall = this.restic.call(
+                        'init',
+                        [],
+                        {
+                            repository: repository,
+                            logger: job.getLogger()
+                        }
+                    )
+
+                    job.once('abort', () => resticCall.abort())
+
+                    try {
+                        await once(resticCall, 'finish')
+                    } catch (e) {
+                        job.getLogger().info('Failed finish, ignoring because of probably already initialized')
+                    }
+                },
+                priority: 'next'
+            })
+        )
+    }
+
+    protected async unlockRepository(repository: Config['repositories'][0], job: Job) {
+        const resticCall = this.restic.call(
+            'unlock',
+            [],
+            {
+                repository: repository,
+                logger: job.getLogger()
+            }
+        )
+
+        job.once('abort', () => resticCall.abort())
+
+        await once(resticCall, 'finish')
+    }
+
+
+    protected extractValueFromTags(tags: string[], key: string) {
+        const tag = tags.find(tag => tag.substr(0, key.length + 1) === key + '-')
+
+        if (!tag) {
+            return
+        }
+
+        return tag.substr(key.length + 1)
+    }
+
+    protected formatTagValue(key: string, value: string) {
+        return key + '-' + value
+    }
+
+    // def get_path_history(self, repository_name, backup_name, path, priority='immediate'):
+    //     #sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD= restic find --long '/sources/.truc/.machin/super.txt' --json --tag backup-xxx --host host-xxx
+    //     pass
+
+    // def download_snapshot(self):
+    //     # TODO test with node
+
+    //     repository = self._config['repositories']['app2_dd']
+    //     # sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD=bca restic dump cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1 / > /tmp/prout.tar
+
+    //     response = call_restic(
+    //                     cmd='dump',
+    //                     args=['cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1', '/sources/.truc'],
+    //                     env=self._get_restic_repository_envs(repository),
+    //                     logger=self._logger,
+    //                     json=True
+    //                 )['stdout']
 
 
 
+
+    // def restore_snapshot(self, repository_name, snapshot, target_path=None, priority='normal', get_result=False):
+    //     if not target_path:
+    //         target_path = '/'
+
+    //     repository = self._config['repositories'][repository_name]
+
+    //     self._logger.info('restore_snapshot requested', extra={
+    //         'component': 'daemon',
+    //         'action': 'restore_snapshot',
+    //         'repository': repository['name'],
+    //         'snapshot': snapshot,
+    //         'status': 'queuing'
+    //     })
+
+    //     def do_restore_snapshot():
+    //         self._logger.info('Starting restore', extra={
+    //             'component': 'daemon',
+    //             'action': 'restore_snapshot',
+    //             'repository': repository_name,
+    //             'snapshot': snapshot,
+    //             'status': 'starting'
+    //         })
+    //         try:
+    //             args = [snapshot]
+    //             args = args + ['--target', target_path]
+    //             args = args + self._get_restic_global_opts()
+    //             self._unlock_repository(repository)
+    //             call_restic(cmd='restore', args=args, env=self._get_restic_repository_envs(repository), logger=self._logger)
+    //             self._logger.info('Restore ended', extra={
+    //                 'component': 'daemon',
+    //                 'action': 'restore_snapshot',
+    //                 'repository': repository_name,
+    //                 'snapshot': snapshot,
+    //                 'status': 'success'
+    //             })
+    //         except Exception as e:
+    //             self._logger.exception('Restore failed', extra={
+    //                 'component': 'daemon',
+    //                 'action': 'restore_snapshot',
+    //                 'repository': repository_name,
+    //                 'snapshot': snapshot,
+    //                 'status': 'failure'
+    //             })
+
+    //     self._task_manager.add_task(
+    //         task=Task(fn=do_restore_snapshot, priority=priority, id="restore_snap_%s_%s" % (repository_name, snapshot)),
+    //         ignore_if_duplicate=True,
+    //         get_result=False
+    //     )
 }

@@ -48,9 +48,9 @@ export default class Api {
 
         apiRouter.get('/snapshots', async (req, res) => {
             res.send(await daemon.listSnapshots({
-                backupName: req.query.backupName as string | undefined,
-                repositoryName: req.query.repositoryName as string | undefined,
-            }))
+                backupName: req.query.backup as string | undefined,
+                repositoryName: req.query.repository as string | undefined,
+            }, 'api'))
         })
 
         apiRouter.get('/snapshots/:repository/:snapshot', async (req, res) => {

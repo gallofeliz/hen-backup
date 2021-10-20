@@ -14,6 +14,25 @@ export interface ResticOpts {
     }
     outputStream?: NodeJS.WritableStream
     logger: Logger
+    cacheDir?: string
+}
+
+export default class Restic {
+    protected opts: Partial<ResticOpts>
+
+    constructor(opts: Partial<ResticOpts> = {}) {
+        this.opts = opts
+    }
+
+    public call(command: string, args: string[], opts: Partial<ResticOpts> = {}): ResticCall {
+        const callOpts = {...this.opts, ...opts}
+
+        if (!callOpts.repository || !callOpts.logger) {
+            throw new Error('Missing repository or logger')
+        }
+
+        return new ResticCall(command, args, callOpts as ResticOpts)
+    }
 }
 
 class ResticCall extends EventEmitter {
@@ -48,8 +67,10 @@ class ResticCall extends EventEmitter {
         const json = ['ls', 'snapshots'].includes(command) ? true : false
         const multilineJson = command === 'ls' ? true : false
 
+        // Make cleanup cache only on some commands to avoid to make slower "fast" commands ?
+        // Or make cleanup cache in a job (boring job ahah) ?
         const resticArgs = ['--cleanup-cache', command].concat(args).concat(json ? ['--json'] : [])
-        const resticEnv = {...env, 'RESTIC_CACHE_DIR':'/tmp'}
+        const resticEnv = {...env, 'RESTIC_CACHE_DIR': opts.cacheDir || '/var/cache/restic'}
 
         if (opts.uploadLimit) {
             resticArgs.push('--limit-upload', sizeToKiB(opts.uploadLimit).toString())
@@ -115,9 +136,3 @@ class ResticCall extends EventEmitter {
         this.process.kill('SIGINT')
     }
 }
-
-export default function callRestic(command: string, args: string[], opts: ResticOpts): ResticCall {
-    return new ResticCall(command, args, opts)
-}
-
-
