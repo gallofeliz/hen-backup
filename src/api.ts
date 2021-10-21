@@ -17,11 +17,16 @@ export default class Api {
         this.app = express()
         this.config = config
 
-        this.app.use(basicAuth({users: { [config.credentials.username]: config.credentials.password }, challenge: true}))
+        this.app.use(basicAuth({
+            users: config.users.reduce((dict, user) => ({...dict, [user.username]: user.password}), {}),
+            challenge: true
+        }))
+
         this.app.use(jsonParser())
 
         const apiRouter = express.Router()
         this.app.use('/api', apiRouter)
+        this.app.use('/', express.static('webui'))
 
         apiRouter.get('/config', (req, res) => {
             res.send(daemon.getConfigSummary())

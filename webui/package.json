@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@babel/polyfill": "^7.11.5",
-    "@open-rpc/client-js": "^1.7.1",
     "bootstrap": "^4.5.2",
     "bootstrap-vue": "^2.17.3",
     "core-js": "^3.6.5",

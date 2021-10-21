@@ -8,9 +8,12 @@ downloadLimit: 200K
 
 api:
   port: 8080
-  credentials:
-    username: big
-    password: boss
+  # List of users to add ability of "scopes" without using super admin user
+  users:
+    - username: big
+      password: boss
+    - username: admin
+      password: admin
 
 repositories:
   global_dd:

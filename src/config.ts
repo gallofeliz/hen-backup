@@ -6,10 +6,10 @@ import {hostname} from 'os'
 
 export interface ApiConfig {
     port: number
-    credentials: {
+    users: Array<{
         username: string
         password: string
-    }
+    }>
 }
 
 export interface Hook {

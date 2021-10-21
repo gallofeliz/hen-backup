@@ -8,7 +8,7 @@
 
         <b-navbar-toggle target="nav-collapse"></b-navbar-toggle>
 
-        <b-collapse id="nav-collapse" is-nav v-if="auth">
+        <b-collapse id="nav-collapse" is-nav>
           <b-navbar-nav>
             <b-nav-item to="/">Status</b-nav-item>
             <b-nav-item to="/snapshots">Explore</b-nav-item>
@@ -26,103 +26,60 @@
         </b-collapse>
     </b-navbar>
     <div class="mb-3 mt-3 ml-3 mr-3">
-      <router-view v-if="auth"/>
-      <div v-if="!auth">
-        <form @submit="login()" class="login-form">
+      <router-view/>
 
-
-
-          <b-form-group
-            label="Username:"
-            label-for="input-1"
-          >
-            <b-form-input
-              id="input-1"
-              v-model="formLogin"
-              required
-            ></b-form-input>
-          </b-form-group>
-
-          <b-form-group
-            label="Password:"
-            label-for="input-2"
-          >
-            <b-form-input
-              id="input-2"
-              v-model="formPass"
-              type="password"
-              required
-            ></b-form-input>
-          </b-form-group>
-
-
-          <b-button type="submit" variant="primary" block>Login</b-button>
-        </form>
-      </div>
     </div>
   </div>
 </template>
 
 <script>
 
-import { RequestManager, HTTPTransport, Client } from "@open-rpc/client-js";
+import {EventEmitter} from 'events'
 
-const rM = new RequestManager([]);
-const client = new Client(rM);
+class Client extends EventEmitter {
+  getConfig() {
+    return this.handleEvents(async () => (await fetch('/api/config')).json())
+  }
+  async handleEvents(callFn) {
+    try {
+      this.emit('request')
+      const response = await callFn()
+      this.emit('response')
+      return response
+    } catch (e) {
+      this.emit('error', e)
+      throw e
+    }
+  }
+}
+
+const client = new Client()
 
 export default {
   data() {
     return {
       config: null,
       loading: 0,
-      client,
-      auth: false,
-      formLogin: null,
-      formPass: null
+      client
     }
   },
   provide: {
     client
   },
-  methods: {
-    async login(auth) {
-      if (!auth) {
-        auth = btoa(this.formLogin + ':' + this.formPass)
-      }
-      const transport = new HTTPTransport("http://localhost:8585", {
-          headers: {
-              'Authorization': 'Basic ' + auth
-          }
-      });
-      rM.transports = [transport]
-      try {
-        this.config = await this.client.request({method: "get_config_summary", params: []})
-        this.auth = true
-        window.sessionStorage.setItem('auth', auth)
-      } catch (e) {
-        console.error(e)
-      }
-    }
-  },
   async created() {
+    client.on('request', () => {
+      this.loading++
+    })
+    client.on('response', () => {
+      this.loading--
+    })
+    client.on('error', (e) => {
+      this.loading--
+      this.$bvToast.toast('API call : ' + e.message, {solid: true, title: 'Error', variant: 'danger'})
+    })
 
-    ((parentRequest) => this.client.request = async (...args) => {
-        this.loading++
-        try {
-          const response = await parentRequest(...args)
-          this.loading--
-          return response
-        } catch (e) {
-          this.loading--
-          this.$bvToast.toast('Daemon call : ' + e.message, {solid: true, title: 'Error', variant: 'danger'})
-          throw e
-        }
-    })(this.client.request.bind(this.client))
-
-    if (window.sessionStorage.getItem('auth')) {
-      this.login(window.sessionStorage.getItem('auth'))
-    }
-  },
+    this.config = await client.getConfig()
+  }
 }
 </script>
 
