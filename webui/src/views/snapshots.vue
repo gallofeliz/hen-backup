@@ -25,14 +25,14 @@
   </b-form>
 
   <div v-if="results">
-    <b-table striped hover :items="results" :fields="['Date', 'Backup', 'Repository', 'Id', { key: 'actions', label: 'Actions' }]">
+    <b-table striped hover :items="results" :fields="['date', 'backup', 'repository', 'id', { key: 'actions', label: 'Actions' }]">
 
       <template #cell(Date)="row">
-        {{ row.item.Date | formatDate }}
+        {{ row.item.date | formatDate }}
       </template>
 
       <template #cell(actions)="row">
-        <b-button size="sm" @click="showDetails(row.item.Repository, row.item.Id)">
+        <b-button size="sm" @click="showDetails(row.item.repository, row.item.id)">
           Details
         </b-button>
       </template>
@@ -57,13 +57,17 @@
           </template>
 
           <template #cell(actions)="row">
-            <b-button size="sm" @click="showDetails(row.item.Repository, row.item.Id)" disabled>
+            <b-button size="sm" class="mr-2" disabled>
               History
             </b-button>
-            <b-button size="sm" disabled>
+            <b-button size="sm" class="mr-2" disabled>
               Restore
             </b-button>
-            <b-button size="sm" disabled>
+            <b-dropdown right text="Download" size="sm" variant="primary" v-if="row.item.type==='dir'">
+              <b-dropdown-item size="sm" @click="downloadSnapshot(row.item.path, 'tar', 'dir')">Download tar</b-dropdown-item>
+              <b-dropdown-item size="sm" @click="downloadSnapshot(row.item.path, 'zip', 'dir')">Download zip</b-dropdown-item>
+            </b-dropdown>
+            <b-button size="sm" variant="primary" v-else @click="downloadSnapshot(row.item.path, null, 'file')">
               Download
             </b-button>
           </template>
@@ -75,9 +79,12 @@
           <b-button size="sm" class="mr-2" disabled>
             Restore
           </b-button>
-          <b-button size="sm" variant="primary" @click="downloadSnapshot()">
-            Download
-          </b-button>
+
+          <b-dropdown right text="Download" size="sm" variant="primary">
+            <b-dropdown-item size="sm" @click="downloadSnapshot('/', 'tar', 'dir')">Download tar</b-dropdown-item>
+            <b-dropdown-item size="sm" @click="downloadSnapshot('/', 'zip', 'dir')">Download zip</b-dropdown-item>
+          </b-dropdown>
+
         </div>
       </template>
     </b-modal>
@@ -90,11 +97,14 @@
 import * as moment from 'moment'
 
 export default {
-  inject: ['client'],
+  inject: ['foregroundClient'],
   props: {
   },
   filters: {
     formatDate(date) {
+      if (!date) {
+        throw new Error('Invalid date')
+      }
       return moment(date).format()
     }
   },
@@ -128,7 +138,7 @@ export default {
     }
   },
   async created() {
-    this.config = await this.client.request({method: "get_config_summary", params: []})
+    this.config = await this.foregroundClient.getConfig()
   },
   methods: {
     checkRepoEnable() {
@@ -138,23 +148,18 @@ export default {
     },
     async search() {
       this.results = null
-        this.results = await this.client.request({method: "list_snapshots", params: {
+        this.results = await this.foregroundClient.listSnapshots({
           repository_name: this.filterRepository,
           backup_name: this.filterBackup,
-          reverse: true
-        }})
+        })
     },
-    async downloadSnapshot() {
-
+    downloadSnapshot(path, format, type) {
+      window.location.href = this.foregroundClient.getDownloadSnapshotUrl(this.explain.repository, this.explain.snapshot, path, format, type)
     },
     async showDetails(repository, snapshotId) {
+      this.explain = await this.foregroundClient.getSnapshot(repository, snapshotId)
 
-      this.explain = await this.client.request({method: "explain_snapshot", params: {
-        repository_name: repository,
-        snapshot_id: snapshotId
-      }})
-
-      this.explain.title = `Snapshot ${this.explain.snapshot_id} of backup ${this.explain.backup_name} on repository ${this.explain.repository_name}`
+      this.explain.title = `Snapshot ${this.explain.snapshot} of backup ${this.explain.backup} on repository ${this.explain.repository}`
 
       this.$refs['my-modal'].show()
     },

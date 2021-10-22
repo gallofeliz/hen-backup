@@ -1,4 +1,4 @@
-import { createLogger as createWinstonLogger, format, transports, Logger } from 'winston'
+import { createLogger as createWinstonLogger, format, transports, Logger, config } from 'winston'
 import { mapValues, cloneDeep } from 'lodash'
 
 export { Logger }
@@ -33,6 +33,7 @@ function sanitize(variable: any): any {
 
 export default function createLogger(level: string): Logger {
     return createWinstonLogger({
+        levels: config.syslog.levels,
         level,
         format: format.combine(
             (format((info) => sanitize(cloneDeep(info))))(),

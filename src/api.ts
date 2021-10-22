@@ -5,6 +5,7 @@ import express from 'express'
 import { Server } from 'http'
 import basicAuth from 'express-basic-auth'
 import { json as jsonParser } from 'body-parser'
+import { basename } from 'path'
 
 export default class Api {
     protected logger: Logger
@@ -14,6 +15,7 @@ export default class Api {
 
     constructor(config: ApiConfig, daemon: Daemon, logger: Logger) {
         this.logger = logger
+
         this.app = express()
         this.config = config
 
@@ -48,19 +50,42 @@ export default class Api {
         })
 
         apiRouter.get('/jobs', (req, res) => {
-            res.send(daemon.getJobsSummary())
+            res.send(daemon.getJobs())
         })
 
-        apiRouter.get('/snapshots', async (req, res) => {
-            res.send(await daemon.listSnapshots({
-                backupName: req.query.backup as string | undefined,
-                repositoryName: req.query.repository as string | undefined,
-            }, 'api'))
+        apiRouter.get('/snapshots', async (req, res, next) => {
+            try {
+                res.send(await daemon.listSnapshots(req.query, 'api'))
+            } catch (e) {
+                next(e)
+            }
         })
 
-        apiRouter.get('/snapshots/:repository/:snapshot', async (req, res) => {
-            res.send(await daemon.getSnapshot(req.params.repository, req.params.snapshot, 'api'))
+        apiRouter.get('/snapshots/:repository/:snapshot', async (req, res, next) => {
+            try {
+                res.send(await daemon.getSnapshot(req.params.repository, req.params.snapshot, 'api'))
+            } catch (e) {
+                next(e)
+            }
         })
+
+        apiRouter.get('/snapshots/:repository/:snapshot/content', async (req, res, next) => {
+            try {
+                const format = req.query.type === 'zip' ? 'zip' : 'tar'
+                const path = req.query.path as string || '/'
+                const filename = req.query.type === 'dir' ? req.params.snapshot+'.'+format : basename(path)
+                res.header('Content-Disposition', 'attachment; filename="'+filename+'"')
+                res.send(await daemon.downloadSnapshot(req.params.repository, req.params.snapshot, res, path, format, 'api'))
+            } catch (e) {
+                next(e)
+            }
+        })
+
+        this.app.use((err: Error, req: any, res: any, next: any) => {
+            this.logger.notice('API error', { e: err })
+            res.status(500).send(err.toString());
+        });
+
     }
 
     public start() {

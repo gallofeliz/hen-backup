@@ -35,10 +35,32 @@
 <script>
 
 import {EventEmitter} from 'events'
+import _ from 'lodash'
 
 class Client extends EventEmitter {
-  getConfig() {
-    return this.handleEvents(async () => (await fetch('/api/config')).json())
+  async getConfig() {
+    return this.call('/config')
+  }
+  async listSnapshots(criteria) {
+    return this.call('/snapshots?' + new URLSearchParams(_.pickBy(criteria)).toString())
+  }
+  async getSnapshot(repository, snapshot) {
+    return this.call('/snapshots/'+encodeURI(repository)+'/'+encodeURI(snapshot))
+  }
+  getDownloadSnapshotUrl(repository, snapshot, path, format, type) {
+    return '/api/snapshots/'+encodeURI(repository)+'/'+encodeURI(snapshot)+'/content?' + new URLSearchParams({type, path, format}).toString()
+  }
+  async getJobs() {
+    return this.call('/jobs')
+  }
+  async call(url, json=true) {
+    return this.handleEvents(async () => {
+      const response = await fetch('/api' + url)
+      if (!response.ok) {
+        throw new Error(await response.text())
+      }
+      return json ? response.json() : undefined
+    })
   }
   async handleEvents(callFn) {
     try {
@@ -53,32 +75,36 @@ class Client extends EventEmitter {
   }
 }
 
-const client = new Client()
+const foregroundClient = new Client()
+const backgroundClient = new Client()
 
 export default {
   data() {
     return {
       config: null,
-      loading: 0,
-      client
+      loading: 0
     }
   },
   provide: {
-    client
+    foregroundClient,
+    backgroundClient
   },
   async created() {
-    client.on('request', () => {
+    foregroundClient.on('request', () => {
       this.loading++
     })
-    client.on('response', () => {
+    foregroundClient.on('response', () => {
       this.loading--
     })
-    client.on('error', (e) => {
+    foregroundClient.on('error', (e) => {
       this.loading--
       this.$bvToast.toast('API call : ' + e.message, {solid: true, title: 'Error', variant: 'danger'})
     })
+    backgroundClient.on('error', (e) => {
+      this.$bvToast.toast('API call : ' + e.message, {solid: true, title: 'Error', variant: 'danger'})
+    })
 
-    this.config = await client.getConfig()
+    this.config = await foregroundClient.getConfig()
   }
 }
 </script>

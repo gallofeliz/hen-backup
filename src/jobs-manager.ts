@@ -12,6 +12,8 @@ export class Job extends EventEmitter {
     protected result: Promise<any>
     protected uuid: string = uuid4()
     protected createdAt: Date = new Date
+    protected startedAt?: Date
+    protected endedAt?: Date
     protected resolve?: (data: any) => void
     protected reject?: (error: Error) => void
     protected logger: Logger
@@ -88,15 +90,25 @@ export class Job extends EventEmitter {
         return this.createdAt
     }
 
+    public getStartedAt() {
+        return this.startedAt
+    }
+
+    public getEndedAt() {
+        return this.endedAt
+    }
+
     public async run() {
         if (this.state !== 'new') {
             throw new Error('Already started')
         }
 
         this.state = 'running'
+        this.startedAt = new Date
         this.logger.info('Let\'s run the job !', {
             jobState: this.state
         })
+        this.emit('running')
 
         try {
             const result = await this.fn(this)
@@ -111,15 +123,21 @@ export class Job extends EventEmitter {
             this.logger.info('Success :)', {
                 jobState: this.state
             })
+            this.emit('success')
         } catch (e) {
             this.state = (this.state as string) === 'aborting' ? 'aborted' : 'failure'
             this.logger.error('failure', {
                 jobState: this.state
             })
             this.reject!(e as Error)
+            this.emit(this.state)
         }
 
-        this.removeAllListeners('abort')
+        this.endedAt = new Date
+
+        this.emit('ended')
+
+        this.removeAllListeners()
 
         return this.getResult()
     }
@@ -154,6 +172,8 @@ export class Job extends EventEmitter {
             jobState: this.state
         })
         this.reject!(new Error('Canceled'))
+        this.emit('canceled')
+        this.removeAllListeners()
     }
 }
 
@@ -179,12 +199,12 @@ export default class JobsManager {
     }
 
     public stop() {
-        this.queue = []
         this.started = false
+        this.queue.forEach(job => job.cancel())
         this.running.forEach(job => job.abort())
     }
 
-    public getSummary() {
+    public getJobs() {
         return {
             queue: this.queue,
             running: this.running,
@@ -222,6 +242,21 @@ export default class JobsManager {
         }
 
         this.logger.info('Queueing job', { job: job.getUuid() })
+
+        job.once('running', () => {
+            this.queue.splice(this.queue.indexOf(job), 1)
+            this.running.push(job)
+        })
+
+        job.once('canceled', () => {
+            this.queue.splice(this.queue.indexOf(job), 1)
+            this.archive(job)
+        })
+
+        job.once('ended', () => {
+            this.running.splice(this.running.indexOf(job), 1)
+            this.archive(job)
+        })
 
         if (this.started && job.getPriority() === 'immediate' && this.queue.length > 0) {
             this.run(job)
@@ -314,18 +349,14 @@ export default class JobsManager {
             return
         }
 
-        this.run(this.queue.shift() as Job)
+        this.run(this.queue[0] as Job)
     }
 
     protected async run(job: Job) {
-        this.running.push(job)
-
         try {
             await job.run()
         } catch(e) {}
 
-        this.running.splice(this.running.indexOf(job))
-        this.archive(job)
         this.runNext()
     }
 }

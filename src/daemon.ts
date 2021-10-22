@@ -65,10 +65,12 @@ export default class Daemon {
         }
     }
 
-    public getJobsSummary() {
-        return _.mapValues(this.jobsManager.getSummary(), jobs => jobs.map(job => ({
+    public getJobs() {
+        return _.mapValues(this.jobsManager.getJobs(), jobs => jobs.map(job => ({
             uuid: job.getUuid(),
             createdAt: job.getCreatedAt(),
+            startedAt: job.getStartedAt(),
+            endedAt: job.getEndedAt(),
             state: job.getState(),
             priority: job.getPriority(),
             trigger: job.getTrigger(),
@@ -199,6 +201,69 @@ export default class Daemon {
             true,
             true
         )
+    }
+
+    public downloadSnapshot(
+        repositoryName: string,
+        snapshotId: string,
+        stream: NodeJS.WritableStream,
+        path: string,
+        format: 'tar' | 'zip',
+        trigger: 'api'
+    ) {
+        const repository = this.config.repositories[repositoryName]
+
+        if (!repository) {
+            throw new Error('Unknown repository ' + repositoryName)
+        }
+
+        return this.jobsManager.addJob(
+            new Job({
+                logger: this.logger,
+                trigger: trigger,
+                operation: 'downloadSnapshot',
+                subjects: {repository: repositoryName, snapshot: snapshotId},
+                fn: async (job) => {
+                    await this.unlockRepository(repository, job)
+
+                    const resticCall = this.restic.call(
+                        'dump',
+                        [
+                            '--archive',
+                            format,
+                            snapshotId,
+                            path
+                        ],
+                        {
+                            repository: repository,
+                            logger: job.getLogger(),
+                            outputStream: stream
+                        }
+                    )
+
+                    job.once('abort', () => resticCall.abort())
+
+                    await once(resticCall, 'finish')
+                },
+                priority: 'immediate'
+            }),
+            true,
+            true
+        )
+    // def download_snapshot(self):
+    //     # TODO test with node
+
+    //     repository = self._config['repositories']['app2_dd']
+    //     # sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD=bca restic dump cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1 / > /tmp/prout.tar
+
+    //     response = call_restic(
+    //                     cmd='dump',
+    //                     args=['cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1', '/sources/.truc'],
+    //                     env=self._get_restic_repository_envs(repository),
+    //                     logger=self._logger,
+    //                     json=True
+    //                 )['stdout']
+
     }
 
     public checkRepository(repositoryName: string, trigger:'scheduler' | 'api', priority?: string) {
@@ -540,20 +605,6 @@ export default class Daemon {
     // def get_path_history(self, repository_name, backup_name, path, priority='immediate'):
     //     #sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD= restic find --long '/sources/.truc/.machin/super.txt' --json --tag backup-xxx --host host-xxx
     //     pass
-
-    // def download_snapshot(self):
-    //     # TODO test with node
-
-    //     repository = self._config['repositories']['app2_dd']
-    //     # sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD=bca restic dump cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1 / > /tmp/prout.tar
-
-    //     response = call_restic(
-    //                     cmd='dump',
-    //                     args=['cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1', '/sources/.truc'],
-    //                     env=self._get_restic_repository_envs(repository),
-    //                     logger=self._logger,
-    //                     json=True
-    //                 )['stdout']
 
 
 
