@@ -65,18 +65,30 @@ export default class Daemon {
         }
     }
 
-    public getJobs() {
-        return _.mapValues(this.jobsManager.getJobs(), jobs => jobs.map(job => ({
-            uuid: job.getUuid(),
-            createdAt: job.getCreatedAt(),
-            startedAt: job.getStartedAt(),
-            endedAt: job.getEndedAt(),
-            state: job.getState(),
-            priority: job.getPriority(),
-            trigger: job.getTrigger(),
-            operation: job.getOperation(),
-            subjects: job.getSubjects()
-        })))
+    public async getJobs() {
+
+        async function convertJob(job: Job) {
+            return {
+                uuid: job.getUuid(),
+                createdAt: job.getCreatedAt(),
+                startedAt: job.getStartedAt(),
+                endedAt: job.getEndedAt(),
+                state: job.getState(),
+                priority: job.getPriority(),
+                trigger: job.getTrigger(),
+                operation: job.getOperation(),
+                subjects: job.getSubjects(),
+                ...job.getState() === 'failure' && { error: await (job.getResult().catch(e => e.toString())) }
+            }
+        }
+
+        const allJobs: Record<string, any>= this.jobsManager.getJobs()
+
+        for (const type in allJobs) {
+            allJobs[type] = await Promise.all(allJobs[type].map(convertJob))
+        }
+
+        return allJobs
     }
 
     public listSnapshots(criterias: {backupName?: string, repositoryName?: string}, trigger: 'api') {
@@ -222,7 +234,7 @@ export default class Daemon {
                 logger: this.logger,
                 trigger: trigger,
                 operation: 'downloadSnapshot',
-                subjects: {repository: repositoryName, snapshot: snapshotId},
+                subjects: {repository: repositoryName, snapshot: snapshotId, path},
                 fn: async (job) => {
                     await this.unlockRepository(repository, job)
 

@@ -27,7 +27,7 @@
   <div v-if="results">
     <b-table striped hover :items="results" :fields="['date', 'backup', 'repository', 'id', { key: 'actions', label: 'Actions' }]">
 
-      <template #cell(Date)="row">
+      <template #cell(date)="row">
         {{ row.item.date | formatDate }}
       </template>
 

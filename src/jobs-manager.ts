@@ -127,7 +127,8 @@ export class Job extends EventEmitter {
         } catch (e) {
             this.state = (this.state as string) === 'aborting' ? 'aborted' : 'failure'
             this.logger.error('failure', {
-                jobState: this.state
+                jobState: this.state,
+                e
             })
             this.reject!(e as Error)
             this.emit(this.state)
@@ -281,8 +282,8 @@ export default class JobsManager {
     }
 
     protected archive(job: Job) {
-        this.archived.shift()
-        this.archived.push(job)
+        this.archived.pop()
+        this.archived.unshift(job)
     }
 
     protected isPrioSup(jobA: Job, jobB: Job): boolean {

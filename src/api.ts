@@ -49,8 +49,12 @@ export default class Api {
             res.end()
         })
 
-        apiRouter.get('/jobs', (req, res) => {
-            res.send(daemon.getJobs())
+        apiRouter.get('/jobs', async (req, res) => {
+            res.send(await daemon.getJobs())
+        })
+
+        apiRouter.get('/jobs/:job', async (req, res, next) => {
+            next(new Error('Todo with logs ?'))
         })
 
         apiRouter.get('/snapshots', async (req, res, next) => {
