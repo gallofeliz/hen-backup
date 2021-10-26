@@ -8,14 +8,15 @@ import { once } from 'events'
 import _ from 'lodash'
 import { durationToSeconds } from './utils'
 import got, { Method as GotMethod } from 'got'
+import { reduce as asyncReduce } from 'bluebird'
 
 export default class Daemon {
     protected config: Config
     protected logger: Logger
     protected fnSchedulers: FnScheduler[] = []
+    protected fsWatchers: FsWatcher[] = []
     protected jobsManager: JobsManager
     protected started = false
-    protected fsWatchers: FsWatcher[] = []
     protected restic: Restic
 
     constructor(config: Config, logger: Logger) {
@@ -65,27 +66,43 @@ export default class Daemon {
         }
     }
 
-    public async getJobs() {
+    public async getSummary() {
+        const jobs: Record<string, any>= this.jobsManager.getJobs()
 
-        async function convertJob(job: Job) {
-            return {
-                uuid: job.getUuid(),
-                createdAt: job.getCreatedAt(),
-                startedAt: job.getStartedAt(),
-                endedAt: job.getEndedAt(),
-                state: job.getState(),
-                priority: job.getPriority(),
-                trigger: job.getTrigger(),
-                operation: job.getOperation(),
-                subjects: job.getSubjects(),
-                ...job.getState() === 'failure' && { error: await (job.getResult().catch(e => e.toString())) }
-            }
+        function findBackupJob(jobs: Job[], backupName: string) {
+            return jobs.find((job: Job) => job.getOperation() === 'backup' && job.getSubjects().backup === backupName) || null
         }
+
+        function findBackupScheduler(schedulers: FnScheduler[], backupName: string) {
+            return schedulers.find(fnScheduler => fnScheduler.getId().operation === 'backup' && fnScheduler.getId().backup === backupName) || null
+        }
+
+        return {
+            started: this.started,
+            backups: await asyncReduce(Object.keys(this.config.backups), async (backupsStatus, backupName) => {
+                const lastJob = findBackupJob(jobs.archived, backupName)
+                const running = findBackupJob(jobs.running, backupName)
+                const queuedJob = findBackupJob(jobs.queue, backupName)
+                const scheduler = findBackupScheduler(this.fnSchedulers, backupName)
+
+                return {...backupsStatus, ...{
+                    [backupName]: {
+                        lastArchivedJob: lastJob && await lastJob.toJson(),
+                        runningJob: running && await running.toJson(),
+                        queueJob: queuedJob && await queuedJob.toJson(),
+                        nextSchedule: scheduler && scheduler.getNextScheduledDate()
+                    }
+                }}
+            }, {})
+        }
+    }
+
+    public async getJobs() {
 
         const allJobs: Record<string, any>= this.jobsManager.getJobs()
 
         for (const type in allJobs) {
-            allJobs[type] = await Promise.all(allJobs[type].map(convertJob))
+            allJobs[type] = await Promise.all(allJobs[type].map((job: Job) => job.toJson()))
         }
 
         return allJobs
@@ -503,6 +520,7 @@ export default class Daemon {
         .forEach((repository) => {
             this.fnSchedulers.push(
                 new FnScheduler(
+                    { operation: 'check', repository: repository.name },
                     () => this.checkRepository(repository.name, 'scheduler'),
                     this.logger,
                     repository.check!.schedules,
@@ -516,6 +534,7 @@ export default class Daemon {
             if (backup.schedules) {
                 this.fnSchedulers.push(
                     new FnScheduler(
+                        { operation: 'backup', backup: backup.name },
                         () => this.backup(backup.name, 'scheduler'),
                         this.logger,
                         backup.schedules,
@@ -540,6 +559,7 @@ export default class Daemon {
             if (backup.prune && backup.prune.schedules) {
                 this.fnSchedulers.push(
                     new FnScheduler(
+                        { operation: 'prune', backup: backup.name },
                         () => this.prune(backup.name, 'scheduler'),
                         this.logger,
                         backup.prune.schedules,

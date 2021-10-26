@@ -53,6 +53,10 @@ export default class Api {
             res.send(await daemon.getJobs())
         })
 
+        apiRouter.get('/summary', async (req, res) => {
+            res.send(await daemon.getSummary())
+        })
+
         apiRouter.get('/jobs/:job', async (req, res, next) => {
             next(new Error('Todo with logs ?'))
         })

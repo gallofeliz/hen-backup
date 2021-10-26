@@ -1,15 +1,21 @@
 import Vue from 'vue'
 import VueRouter from 'vue-router'
 import Snapshots from '../views/snapshots.vue'
-import Status from '../views/status.vue'
+import Summary from '../views/summary.vue'
+import Jobs from '../views/jobs.vue'
 
 Vue.use(VueRouter)
 
 const routes = [
   {
     path: '/',
-    name: 'status',
-    component: Status
+    name: 'Summary',
+    component: Summary
+  },
+  {
+    path: '/jobs',
+    name: 'jobs',
+    component: Jobs
   },
   {
     path: '/snapshots',

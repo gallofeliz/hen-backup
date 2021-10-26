@@ -10,10 +10,11 @@
 
         <b-collapse id="nav-collapse" is-nav>
           <b-navbar-nav>
-            <b-nav-item to="/">Status</b-nav-item>
-            <b-nav-item to="/snapshots">Explore</b-nav-item>
-            <b-nav-item to="/search">Search</b-nav-item>
-            <b-nav-item to="/maintenance">Maintenance</b-nav-item>
+            <b-nav-item exact-active-class="active" to="/">Summary</b-nav-item>
+            <b-nav-item exact-active-class="active" to="/snapshots">Explore</b-nav-item>
+            <b-nav-item exact-active-class="active" to="/search">Search</b-nav-item>
+            <b-nav-item exact-active-class="active" to="/jobs">Jobs</b-nav-item>
+            <b-nav-item exact-active-class="active" to="/maintenance">Maintenance</b-nav-item>
           </b-navbar-nav>
 
           <b-navbar-nav class="ml-auto">
@@ -52,6 +53,9 @@ class Client extends EventEmitter {
   }
   async getJobs() {
     return this.call('/jobs')
+  }
+  async getSummary() {
+    return this.call('/summary')
   }
   async call(url, json=true) {
     return this.handleEvents(async () => {

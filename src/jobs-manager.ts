@@ -176,6 +176,21 @@ export class Job extends EventEmitter {
         this.emit('canceled')
         this.removeAllListeners()
     }
+
+    public async toJson() {
+        return {
+            uuid: this.getUuid(),
+            createdAt: this.getCreatedAt(),
+            startedAt: this.getStartedAt(),
+            endedAt: this.getEndedAt(),
+            state: this.getState(),
+            priority: this.getPriority(),
+            trigger: this.getTrigger(),
+            operation: this.getOperation(),
+            subjects: this.getSubjects(),
+            ...this.getState() === 'failure' && { error: await (this.getResult().catch(e => e.toString())) }
+        }
+    }
 }
 
 export default class JobsManager {
