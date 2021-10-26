@@ -39,6 +39,8 @@
 
     </b-table>
 
+    - Delete selected snapshots
+
   </div>
 
     <b-modal ref="my-modal" :title="explain.title" size="xl" scrollable>
@@ -149,8 +151,8 @@ export default {
     async search() {
       this.results = null
         this.results = await this.foregroundClient.listSnapshots({
-          repository_name: this.filterRepository,
-          backup_name: this.filterBackup,
+          repository: this.filterRepository,
+          backup: this.filterBackup,
         })
     },
     downloadSnapshot(path, format, type) {

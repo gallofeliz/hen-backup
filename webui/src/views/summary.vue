@@ -21,18 +21,111 @@
               Queued since {{ backupStatus.queueJob.createdAt | formatAgo }}
             </span>
             <span v-else-if="backupStatus.nextSchedule">
-              Scheduled to {{ backupStatus.nextSchedule | formatTo }}
+              Scheduled for {{ backupStatus.nextSchedule | formatTo }}
             </span>
             <span v-else>
               Unknown
             </span>
         </p>
         <p>
-          <b-button size="sm" variant="primary" disabled>Backup now</b-button>
+          <a href="#null" class="mr-2">See history</a>
+
+          <b-dropdown text="Backup" size="sm" variant="primary" style="float: right">
+            <b-dropdown-item size="sm" @click="runBackup(backupName)">With default priority</b-dropdown-item>
+            <b-dropdown-item size="sm" @click="runBackup(backupName, 'immediate')">Immediatly</b-dropdown-item>
+            <b-dropdown-item size="sm">Nextly</b-dropdown-item>
+            <b-dropdown-item size="sm">Superiorly</b-dropdown-item>
+            <b-dropdown-item size="sm">Normaly</b-dropdown-item>
+            <b-dropdown-item size="sm">Inferiorly</b-dropdown-item>
+            <b-dropdown-item size="sm">On idle</b-dropdown-item>
+          </b-dropdown>
+
         </p>
       </div>
+
       <h1>Repositories checks</h1>
+      <div v-for="(checkStatus, repositoryName) in summary.checks" :key="repositoryName" class="status-element">
+        <b-icon-server class="icon"></b-icon-server>
+        {{repositoryName}}
+        <p>
+          Last run :
+          <span v-if="checkStatus.lastArchivedJob">
+            {{ checkStatus.lastArchivedJob.endedAt | formatAgo }},
+            <span :class="{'badge badge-danger': checkStatus.lastArchivedJob.state !== 'success' }" v-b-tooltip.hover :title="checkStatus.lastArchivedJob.error">{{ checkStatus.lastArchivedJob.state }}</span>
+          </span>
+          <span v-else>Unknown</span>
+          <br />
+          Next run :
+            <span v-if="checkStatus.runningJob">
+              Running since {{ checkStatus.runningJob.startedAt | formatAgo }}
+            </span>
+            <span v-else-if="checkStatus.queueJob">
+              Queued since {{ checkStatus.queueJob.createdAt | formatAgo }}
+            </span>
+            <span v-else-if="checkStatus.nextSchedule">
+              Scheduled for {{ checkStatus.nextSchedule | formatTo }}
+            </span>
+            <span v-else>
+              Unknown
+            </span>
+        </p>
+        <p>
+          <a href="#null" class="mr-2">See history</a>
+
+          <b-dropdown text="Check" size="sm" variant="primary" style="float: right">
+            <b-dropdown-item size="sm">With default priority</b-dropdown-item>
+            <b-dropdown-item size="sm">Immediatly</b-dropdown-item>
+            <b-dropdown-item size="sm">Nextly</b-dropdown-item>
+            <b-dropdown-item size="sm">Superiorly</b-dropdown-item>
+            <b-dropdown-item size="sm">Normaly</b-dropdown-item>
+            <b-dropdown-item size="sm">Inferiorly</b-dropdown-item>
+            <b-dropdown-item size="sm">On idle</b-dropdown-item>
+          </b-dropdown>
+
+        </p>
+      </div>
+
       <h1>Backups prunes</h1>
+      <div v-for="(pruneStatus, backupName) in summary.prunes" :key="backupName" class="status-element">
+        <b-icon-scissors class="icon"></b-icon-scissors>
+        {{backupName}}
+        <p>
+          Last run :
+          <span v-if="pruneStatus.lastArchivedJob">
+            {{ pruneStatus.lastArchivedJob.endedAt | formatAgo }},
+            <span :class="{'badge badge-danger': pruneStatus.lastArchivedJob.state !== 'success' }" v-b-tooltip.hover :title="pruneStatus.lastArchivedJob.error">{{ pruneStatus.lastArchivedJob.state }}</span>
+          </span>
+          <span v-else>Unknown</span>
+          <br />
+          Next run :
+            <span v-if="pruneStatus.runningJob">
+              Running since {{ pruneStatus.runningJob.startedAt | formatAgo }}
+            </span>
+            <span v-else-if="pruneStatus.queueJob">
+              Queued since {{ pruneStatus.queueJob.createdAt | formatAgo }}
+            </span>
+            <span v-else-if="pruneStatus.nextSchedule">
+              Scheduled for {{ pruneStatus.nextSchedule | formatTo }}
+            </span>
+            <span v-else>
+              Unknown
+            </span>
+        </p>
+        <p>
+          <a href="#null" class="mr-2">See history</a>
+
+          <b-dropdown text="Prune" size="sm" variant="primary" style="float: right">
+            <b-dropdown-item size="sm">With default priority</b-dropdown-item>
+            <b-dropdown-item size="sm">Immediatly</b-dropdown-item>
+            <b-dropdown-item size="sm">Nextly</b-dropdown-item>
+            <b-dropdown-item size="sm">Superiorly</b-dropdown-item>
+            <b-dropdown-item size="sm">Normaly</b-dropdown-item>
+            <b-dropdown-item size="sm">Inferiorly</b-dropdown-item>
+            <b-dropdown-item size="sm">On idle</b-dropdown-item>
+          </b-dropdown>
+
+        </p>
+      </div>
     </div>
   </div>
 </template>
@@ -40,12 +133,12 @@
 <script>
 
 import * as moment from 'moment'
-import { BIconBuilding } from 'bootstrap-vue'
+import { BIconBuilding, BIconScissors, BIconServer } from 'bootstrap-vue'
 
 export default {
-  inject: ['backgroundClient'],
+  inject: ['backgroundClient', 'foregroundClient'],
   components: {
-    BIconBuilding
+    BIconBuilding, BIconScissors, BIconServer
   },
   props: {
   },
@@ -76,6 +169,11 @@ export default {
     },
     cancelAutoUpdate() {
         clearInterval(this.timer)
+    },
+    async runBackup(backup, priority) {
+      await this.foregroundClient.backup(backup, priority)
+
+      this.retrieveSummary()
     }
   },
   data() {

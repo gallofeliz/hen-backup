@@ -77,6 +77,22 @@ export default class Daemon {
             return schedulers.find(fnScheduler => fnScheduler.getId().operation === 'backup' && fnScheduler.getId().backup === backupName) || null
         }
 
+        function findPruneJob(jobs: Job[], backupName: string) {
+            return jobs.find((job: Job) => job.getOperation() === 'prune' && job.getSubjects().backup === backupName) || null
+        }
+
+        function findPruneScheduler(schedulers: FnScheduler[], backupName: string) {
+            return schedulers.find(fnScheduler => fnScheduler.getId().operation === 'prune' && fnScheduler.getId().backup === backupName) || null
+        }
+
+        function findCheckJob(jobs: Job[], repositoryName: string) {
+            return jobs.find((job: Job) => job.getOperation() === 'check' && job.getSubjects().repository === repositoryName) || null
+        }
+
+        function findCheckScheduler(schedulers: FnScheduler[], repositoryName: string) {
+            return schedulers.find(fnScheduler => fnScheduler.getId().operation === 'check' && fnScheduler.getId().repository === repositoryName) || null
+        }
+
         return {
             started: this.started,
             backups: await asyncReduce(Object.keys(this.config.backups), async (backupsStatus, backupName) => {
@@ -86,6 +102,36 @@ export default class Daemon {
                 const scheduler = findBackupScheduler(this.fnSchedulers, backupName)
 
                 return {...backupsStatus, ...{
+                    [backupName]: {
+                        lastArchivedJob: lastJob && await lastJob.toJson(),
+                        runningJob: running && await running.toJson(),
+                        queueJob: queuedJob && await queuedJob.toJson(),
+                        nextSchedule: scheduler && scheduler.getNextScheduledDate()
+                    }
+                }}
+            }, {}),
+            checks: await asyncReduce(Object.keys(this.config.repositories), async (checksStatus, repositoryName) => {
+                const lastJob = findCheckJob(jobs.archived, repositoryName)
+                const running = findCheckJob(jobs.running, repositoryName)
+                const queuedJob = findCheckJob(jobs.queue, repositoryName)
+                const scheduler = findCheckScheduler(this.fnSchedulers, repositoryName)
+
+                return {...checksStatus, ...{
+                    [repositoryName]: {
+                        lastArchivedJob: lastJob && await lastJob.toJson(),
+                        runningJob: running && await running.toJson(),
+                        queueJob: queuedJob && await queuedJob.toJson(),
+                        nextSchedule: scheduler && scheduler.getNextScheduledDate()
+                    }
+                }}
+            }, {}),
+            prunes: await asyncReduce(Object.keys(this.config.backups), async (prunesStatus, backupName) => {
+                const lastJob = findPruneJob(jobs.archived, backupName)
+                const running = findPruneJob(jobs.running, backupName)
+                const queuedJob = findPruneJob(jobs.queue, backupName)
+                const scheduler = findPruneScheduler(this.fnSchedulers, backupName)
+
+                return {...prunesStatus, ...{
                     [backupName]: {
                         lastArchivedJob: lastJob && await lastJob.toJson(),
                         runningJob: running && await running.toJson(),
@@ -122,7 +168,10 @@ export default class Daemon {
                 logger: this.logger,
                 trigger: trigger,
                 operation: 'listSnapshots',
-                subjects: criterias,
+                subjects: {
+                    ...criterias.backupName && {backup: criterias.backupName},
+                    ...criterias.repositoryName && {repository: criterias.repositoryName}
+                },
                 fn: async (job) => {
                     const args = ['--host', this.config.hostname]
 
@@ -279,20 +328,6 @@ export default class Daemon {
             true,
             true
         )
-    // def download_snapshot(self):
-    //     # TODO test with node
-
-    //     repository = self._config['repositories']['app2_dd']
-    //     # sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD=bca restic dump cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1 / > /tmp/prout.tar
-
-    //     response = call_restic(
-    //                     cmd='dump',
-    //                     args=['cbaa5728c139b8043aa1e8256bfe005ec572abb709eb3ced620717d4243758e1', '/sources/.truc'],
-    //                     env=self._get_restic_repository_envs(repository),
-    //                     logger=self._logger,
-    //                     json=True
-    //                 )['stdout']
-
     }
 
     public checkRepository(repositoryName: string, trigger:'scheduler' | 'api', priority?: string) {

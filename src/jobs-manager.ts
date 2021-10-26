@@ -200,7 +200,7 @@ export default class JobsManager {
     protected started = false
     protected logger: Logger
 
-    public constructor(logger: Logger, archivedCount: number = 50) {
+    public constructor(logger: Logger, archivedCount: number = 100) {
         this.logger = logger
         this.archived = new Array(archivedCount)
     }

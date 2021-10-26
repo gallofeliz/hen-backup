@@ -7,9 +7,9 @@
           {{ row.item.createdAt | formatDate }}
         </template>
       </b-table>
+      Cancel ? Change priority ?
       <h1>Running</h1>
       <b-table striped hover :items="jobs.running" :fields="['uuid', 'createdAt', 'startedAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
-
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
         </template>
@@ -18,7 +18,9 @@
           {{ row.item.startedAt | formatDate }}
         </template>
       </b-table>
+      Abort ?
       <h1>Archive</h1>
+      Filters here
       <b-table striped hover :items="jobs.archived" :fields="['uuid', 'createdAt', 'startedAt', 'endedAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
 
         <template #cell(createdAt)="row">
@@ -34,11 +36,12 @@
         </template>
 
         <template #cell(state)="row">
-          <span class="job-error" v-if="row.item.state === 'failure'" v-b-tooltip.hover :title="row.item.error">{{ row.item.state }}</span>
+          <span v-if="row.item.state === 'failure'" v-b-tooltip.hover :title="row.item.error" class="badge badge-danger">{{ row.item.state }}</span>
           <span v-else>{{ row.item.state }}</span>
         </template>
 
       </b-table>
+      Retry ?
     </div>
   </div>
 </template>
@@ -87,7 +90,4 @@ export default {
 </script>
 
 <style scoped>
-    .job-error {
-        color: red;
-    }
 </style>

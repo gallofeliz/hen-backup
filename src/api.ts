@@ -63,7 +63,10 @@ export default class Api {
 
         apiRouter.get('/snapshots', async (req, res, next) => {
             try {
-                res.send(await daemon.listSnapshots(req.query, 'api'))
+                res.send(await daemon.listSnapshots({
+                    ...req.query.backup && {backupName: req.query.backup as string},
+                    ...req.query.repository && {repositoryName: req.query.repository as string},
+                }, 'api'))
             } catch (e) {
                 next(e)
             }

@@ -57,13 +57,19 @@ class Client extends EventEmitter {
   async getSummary() {
     return this.call('/summary')
   }
-  async call(url, json=true) {
+  async backup(backup, priority) {
+    return this.call(
+      '/backups/'+encodeURI(backup)+'/backup?' + new URLSearchParams(_.pickBy({priority})).toString(),
+      {json: false, method: 'POST'}
+    )
+  }
+  async call(url, {json, method} = {}) {
     return this.handleEvents(async () => {
-      const response = await fetch('/api' + url)
+      const response = await fetch('/api' + url, {method: method || 'GET'})
       if (!response.ok) {
         throw new Error(await response.text())
       }
-      return json ? response.json() : undefined
+      return json !== false ? response.json() : undefined
     })
   }
   async handleEvents(callFn) {
