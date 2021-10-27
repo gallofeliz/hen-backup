@@ -6,12 +6,14 @@ import { Server } from 'http'
 import basicAuth from 'express-basic-auth'
 import { json as jsonParser } from 'body-parser'
 import { basename } from 'path'
+import { Socket } from 'net'
 
 export default class Api {
     protected logger: Logger
     protected app: express.Application
     protected server?: Server
     protected config: ApiConfig
+    protected connections: Record<string, Socket> = {}
 
     constructor(config: ApiConfig, daemon: Daemon, logger: Logger) {
         this.logger = logger
@@ -104,6 +106,14 @@ export default class Api {
             return
         }
         this.server = this.app.listen(this.config.port)
+
+        this.server.on('connection', (conn) => {
+            const key = conn.remoteAddress + ':' + conn.remotePort;
+            this.connections[key] = conn;
+            conn.on('close', () => {
+                delete this.connections[key];
+            });
+        });
     }
 
 
@@ -111,7 +121,11 @@ export default class Api {
         if (!this.server) {
             return
         }
+
         this.server.close()
+
+        Object.keys(this.connections).forEach(key => this.connections[key].destroy())
+
         delete this.server
     }
 }

@@ -24,22 +24,13 @@
               Scheduled for {{ backupStatus.nextSchedule | formatTo }}
             </span>
             <span v-else>
-              Unknown
+              No scheduled
             </span>
         </p>
         <p>
-          <a href="#null" class="mr-2">See history</a>
+          <router-link :to="{ name: 'jobs', params: { operation: 'backup', 'subjects.backup': backupName }}" class="mr-2">See history</router-link>
 
-          <b-dropdown text="Backup" size="sm" variant="primary" style="float: right">
-            <b-dropdown-item size="sm" @click="runBackup(backupName)">With default priority</b-dropdown-item>
-            <b-dropdown-item size="sm" @click="runBackup(backupName, 'immediate')">Immediatly</b-dropdown-item>
-            <b-dropdown-item size="sm">Nextly</b-dropdown-item>
-            <b-dropdown-item size="sm">Superiorly</b-dropdown-item>
-            <b-dropdown-item size="sm">Normaly</b-dropdown-item>
-            <b-dropdown-item size="sm">Inferiorly</b-dropdown-item>
-            <b-dropdown-item size="sm">On idle</b-dropdown-item>
-          </b-dropdown>
-
+          <run-button text="Backup" @click="runBackup(backupName, $event)" style="float: right"></run-button>
         </p>
       </div>
 
@@ -66,22 +57,13 @@
               Scheduled for {{ checkStatus.nextSchedule | formatTo }}
             </span>
             <span v-else>
-              Unknown
+              No scheduled
             </span>
         </p>
         <p>
-          <a href="#null" class="mr-2">See history</a>
+          <router-link :to="{ name: 'jobs', params: { operation: 'check', 'subjects.repository': repositoryName }}" class="mr-2">See history</router-link>
 
-          <b-dropdown text="Check" size="sm" variant="primary" style="float: right">
-            <b-dropdown-item size="sm">With default priority</b-dropdown-item>
-            <b-dropdown-item size="sm">Immediatly</b-dropdown-item>
-            <b-dropdown-item size="sm">Nextly</b-dropdown-item>
-            <b-dropdown-item size="sm">Superiorly</b-dropdown-item>
-            <b-dropdown-item size="sm">Normaly</b-dropdown-item>
-            <b-dropdown-item size="sm">Inferiorly</b-dropdown-item>
-            <b-dropdown-item size="sm">On idle</b-dropdown-item>
-          </b-dropdown>
-
+          <run-button text="Check" @click="runCheck(repositoryName, $event)" style="float: right"></run-button>
         </p>
       </div>
 
@@ -108,21 +90,13 @@
               Scheduled for {{ pruneStatus.nextSchedule | formatTo }}
             </span>
             <span v-else>
-              Unknown
+              No scheduled
             </span>
         </p>
         <p>
-          <a href="#null" class="mr-2">See history</a>
+          <router-link :to="{ name: 'jobs', params: { operation: 'prune', 'subjects.backup': backupName }}" class="mr-2">See history</router-link>
 
-          <b-dropdown text="Prune" size="sm" variant="primary" style="float: right">
-            <b-dropdown-item size="sm">With default priority</b-dropdown-item>
-            <b-dropdown-item size="sm">Immediatly</b-dropdown-item>
-            <b-dropdown-item size="sm">Nextly</b-dropdown-item>
-            <b-dropdown-item size="sm">Superiorly</b-dropdown-item>
-            <b-dropdown-item size="sm">Normaly</b-dropdown-item>
-            <b-dropdown-item size="sm">Inferiorly</b-dropdown-item>
-            <b-dropdown-item size="sm">On idle</b-dropdown-item>
-          </b-dropdown>
+          <run-button text="Prune" @click="runPrune(backupName, $event)" style="float: right"></run-button>
 
         </p>
       </div>
@@ -134,11 +108,12 @@
 
 import * as moment from 'moment'
 import { BIconBuilding, BIconScissors, BIconServer } from 'bootstrap-vue'
+import RunButton from '../components/RunButton.vue'
 
 export default {
   inject: ['backgroundClient', 'foregroundClient'],
   components: {
-    BIconBuilding, BIconScissors, BIconServer
+    BIconBuilding, BIconScissors, BIconServer, RunButton
   },
   props: {
   },
@@ -172,6 +147,16 @@ export default {
     },
     async runBackup(backup, priority) {
       await this.foregroundClient.backup(backup, priority)
+
+      this.retrieveSummary()
+    },
+    async runPrune(backup, priority) {
+      await this.foregroundClient.prune(backup, priority)
+
+      this.retrieveSummary()
+    },
+    async runCheck(repository, priority) {
+      await this.foregroundClient.check(repository, priority)
 
       this.retrieveSummary()
     }

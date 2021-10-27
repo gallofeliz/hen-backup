@@ -11,9 +11,9 @@
         <b-collapse id="nav-collapse" is-nav>
           <b-navbar-nav>
             <b-nav-item exact-active-class="active" to="/">Summary</b-nav-item>
+            <b-nav-item exact-active-class="active" to="/jobs">Jobs</b-nav-item>
             <b-nav-item exact-active-class="active" to="/snapshots">Explore</b-nav-item>
             <b-nav-item exact-active-class="active" to="/search">Search</b-nav-item>
-            <b-nav-item exact-active-class="active" to="/jobs">Jobs</b-nav-item>
             <b-nav-item exact-active-class="active" to="/maintenance">Maintenance</b-nav-item>
           </b-navbar-nav>
 
@@ -60,6 +60,18 @@ class Client extends EventEmitter {
   async backup(backup, priority) {
     return this.call(
       '/backups/'+encodeURI(backup)+'/backup?' + new URLSearchParams(_.pickBy({priority})).toString(),
+      {json: false, method: 'POST'}
+    )
+  }
+  async prune(backup, priority) {
+    return this.call(
+      '/backups/'+encodeURI(backup)+'/prune?' + new URLSearchParams(_.pickBy({priority})).toString(),
+      {json: false, method: 'POST'}
+    )
+  }
+  async check(repository, priority) {
+    return this.call(
+      '/repositories/'+encodeURI(repository)+'/check?' + new URLSearchParams(_.pickBy({priority})).toString(),
       {json: false, method: 'POST'}
     )
   }
