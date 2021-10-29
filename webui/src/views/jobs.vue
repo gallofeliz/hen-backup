@@ -1,15 +1,15 @@
 <template>
   <div>
-    <div v-if="jobs">
+    <div v-if="filteredJobs">
       <h1>Queue</h1>
-      <b-table striped hover :items="jobs.queue" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
+      <b-table striped hover :items="filteredJobs.queue" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
         </template>
       </b-table>
       Cancel ? Change priority ?
       <h1>Running</h1>
-      <b-table striped hover :items="jobs.running" :fields="['uuid', 'createdAt', 'startedAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
+      <b-table striped hover :items="filteredJobs.running" :fields="['uuid', 'createdAt', 'startedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]">
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
         </template>
@@ -17,11 +17,17 @@
         <template #cell(startedAt)="row">
           {{ row.item.startedAt | formatDate }}
         </template>
+        <template #cell(actions)="row">
+          <b-button size="sm" @click="showDetails(row.item.uuid)">
+            Details
+          </b-button>
+        </template>
+
       </b-table>
       Abort ?
       <h1>Archive</h1>
       Filters here
-      <b-table striped hover :items="jobs.archived" :fields="['uuid', 'createdAt', 'startedAt', 'endedAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
+      <b-table striped hover :items="filteredJobs.archived" :fields="['uuid', 'createdAt', 'startedAt', 'endedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]">
 
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
@@ -40,9 +46,28 @@
           <span v-else>{{ row.item.state }}</span>
         </template>
 
+        <template #cell(actions)="row">
+          <b-button size="sm" @click="showDetails(row.item.uuid)">
+            Details
+          </b-button>
+        </template>
+
       </b-table>
       Retry ?
     </div>
+
+    <b-modal ref="my-modal" :title="explain.title" size="xl" scrollable>
+      <div class="d-block" v-if="explain.job">
+        <p>Warning : No auto update</p>
+        <pre>{{explain.job.runLogs}}</pre>
+      </div>
+      <template #modal-footer>
+        <div>
+        </div>
+      </template>
+    </b-modal>
+
+
   </div>
 </template>
 
@@ -51,8 +76,11 @@
 import * as moment from 'moment'
 
 export default {
-  inject: ['backgroundClient'],
+  inject: ['backgroundClient', 'foregroundClient'],
   props: {
+    operation: String,
+    repository: String,
+    backup: String
   },
   filters: {
     formatDate(date) {
@@ -61,6 +89,33 @@ export default {
       }
       return moment(date).format()
     },
+  },
+  computed: {
+    filteredJobs() {
+      const filter = (jobs) => {
+        return jobs.filter(job => {
+          if (this.operation && job.operation !== this.operation) {
+            return false
+          }
+
+          if (this.repository && (job.subjects || {}).repository !== this.repository) {
+            return false
+          }
+
+          if (this.backup && (job.subjects || {}).backup !== this.backup) {
+            return false
+          }
+
+          return true
+        })
+      }
+
+      return this.jobs && {
+        queue: filter(this.jobs.queue),
+        running: filter(this.jobs.running),
+        archived: filter(this.jobs.archived)
+      }
+    }
   },
   created() {
     this.retrieveJobs()
@@ -75,12 +130,31 @@ export default {
     },
     cancelAutoUpdate() {
         clearInterval(this.timer)
+    },
+    async showDetails(uuid) {
+      this.explain = {
+        job: await this.foregroundClient.getJob(uuid),
+        title: 'Job ' + uuid
+      }
+
+      this.$refs['my-modal'].show()
+    },
+    hideDetails() {
+      this.$refs['my-modal'].hide()
+      this.explain = {
+        title: null,
+        job: null
+      }
     }
   },
   data() {
     return {
         jobs: null,
-        timer: null
+        timer: null,
+        explain: {
+          title: null,
+          job: null
+        }
     }
   },
   beforeDestroy () {

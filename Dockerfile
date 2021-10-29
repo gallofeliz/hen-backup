@@ -14,7 +14,7 @@ ADD package.json package-lock.json ./
 RUN npm i
 ADD src tsconfig.json ./
 RUN npm run build
-
+RUN npm prune --production
 
 FROM node:alpine3.12
 

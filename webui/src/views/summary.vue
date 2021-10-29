@@ -28,7 +28,7 @@
             </span>
         </p>
         <p>
-          <router-link :to="{ name: 'jobs', params: { operation: 'backup', 'subjects.backup': backupName }}" class="mr-2">See history</router-link>
+          <router-link :to="{ name: 'jobs', query: { operation: 'backup', backup: backupName }}" class="mr-2">See history</router-link>
 
           <run-button text="Backup" @click="runBackup(backupName, $event)" style="float: right"></run-button>
         </p>
@@ -61,7 +61,7 @@
             </span>
         </p>
         <p>
-          <router-link :to="{ name: 'jobs', params: { operation: 'check', 'subjects.repository': repositoryName }}" class="mr-2">See history</router-link>
+          <router-link :to="{ name: 'jobs', query: { operation: 'check', repository: repositoryName }}" class="mr-2">See history</router-link>
 
           <run-button text="Check" @click="runCheck(repositoryName, $event)" style="float: right"></run-button>
         </p>
@@ -94,7 +94,7 @@
             </span>
         </p>
         <p>
-          <router-link :to="{ name: 'jobs', params: { operation: 'prune', 'subjects.backup': backupName }}" class="mr-2">See history</router-link>
+          <router-link :to="{ name: 'jobs', query: { operation: 'prune', backup: backupName }}" class="mr-2">See history</router-link>
 
           <run-button text="Prune" @click="runPrune(backupName, $event)" style="float: right"></run-button>
 

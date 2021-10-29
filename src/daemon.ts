@@ -154,6 +154,10 @@ export default class Daemon {
         return allJobs
     }
 
+    public async getJob(jobUuid: string) {
+        return this.jobsManager.getJob(jobUuid).toJson(true)
+    }
+
     public listSnapshots(criterias: {backupName?: string, repositoryName?: string}, trigger: 'api') {
         if (criterias.backupName && !this.config.backups[criterias.backupName]) {
             throw new Error('Unknown backup ' + criterias.backupName)
@@ -220,8 +224,7 @@ export default class Daemon {
                         )
                     }
 
-                    return _.sortBy(snapshots, 'date')
-
+                    return _.sortBy(snapshots, 'date').reverse()
                 },
                 priority: 'immediate'
             }),

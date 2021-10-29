@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events'
 import { v4 as uuid4 } from 'uuid'
 import { Logger } from './logger'
+import _ from 'lodash'
 
 export class Job extends EventEmitter {
     protected trigger: string | null
@@ -17,6 +18,7 @@ export class Job extends EventEmitter {
     protected resolve?: (data: any) => void
     protected reject?: (error: Error) => void
     protected logger: Logger
+    protected runLogs: object[] = []
 
     constructor(
         { trigger, operation, subjects, fn, priority = 'normal', logger }:
@@ -103,6 +105,18 @@ export class Job extends EventEmitter {
             throw new Error('Already started')
         }
 
+        const runningLoggerListener = (log: object) => {
+
+            if (_.get(log, 'job.uuid') !== this.uuid) {
+                return
+            }
+
+            // WARNING IN CASE OF VERBOSE
+            this.runLogs.push(_.omit(log, ['job']))
+        }
+
+        this.logger.on('log', runningLoggerListener)
+
         this.state = 'running'
         this.startedAt = new Date
         this.logger.info('Let\'s run the job !', {
@@ -128,11 +142,13 @@ export class Job extends EventEmitter {
             this.state = (this.state as string) === 'aborting' ? 'aborted' : 'failure'
             this.logger.error('failure', {
                 jobState: this.state,
-                e
+                error: e
             })
             this.reject!(e as Error)
             this.emit(this.state)
         }
+
+        this.logger.off('log', runningLoggerListener)
 
         this.endedAt = new Date
 
@@ -145,6 +161,10 @@ export class Job extends EventEmitter {
 
     public async getResult() {
         return this.result
+    }
+
+    public getRunLogs() {
+        return this.runLogs
     }
 
     public abort() {
@@ -172,12 +192,14 @@ export class Job extends EventEmitter {
         this.logger.info('Requested cancel', {
             jobState: this.state
         })
+        // Avoid crashing node !
+        this.getResult().catch(e => {})
         this.reject!(new Error('Canceled'))
         this.emit('canceled')
         this.removeAllListeners()
     }
 
-    public async toJson() {
+    public async toJson(withRunLogs = false) {
         return {
             uuid: this.getUuid(),
             createdAt: this.getCreatedAt(),
@@ -188,7 +210,8 @@ export class Job extends EventEmitter {
             trigger: this.getTrigger(),
             operation: this.getOperation(),
             subjects: this.getSubjects(),
-            ...this.getState() === 'failure' && { error: await (this.getResult().catch(e => e.toString())) }
+            ...this.getState() === 'failure' && { error: await (this.getResult().catch(e => e.toString())) },
+            ...withRunLogs && { runLogs: this.getRunLogs() }
         }
     }
 }
@@ -228,6 +251,16 @@ export default class JobsManager {
         }
     }
 
+    public getJob(uuid: string) {
+        for (const repo of [this.queue, this.running, this.archived.filter(job => job)]) {
+            const repoJob = repo.find(job => job.getUuid() === uuid)
+            if (repoJob) {
+                return repoJob
+            }
+        }
+        throw new Error('Unknow job ' + uuid)
+    }
+
     public addJob(job: Job, canBeDuplicate: boolean = false, getResult = false) {
         if (job.getState() !== 'new') {
             throw new Error('Job already started')
@@ -240,14 +273,14 @@ export default class JobsManager {
         if (!canBeDuplicate) {
             const equalJob = this.queue.find(inQueueJob => {
                 return inQueueJob.getOperation() === job.getOperation()
-                    && inQueueJob.getSubjects() === job.getSubjects()
+                    && _.isEqual(inQueueJob.getSubjects(), job.getSubjects())
             })
 
             if (equalJob) {
                 if (equalJob.getPriority() === job.getPriority()) {
                     this.logger.info('Not queueing job because of duplicate', { job: job.getUuid() })
                     job.cancel()
-                    this.archive(job)
+                    //this.archive(job) Don't archive because has never been added ! Avoid pollution in archived
                     return
                 }
                 this.queue.splice(this.queue.indexOf(equalJob), 1)

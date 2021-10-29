@@ -36,6 +36,8 @@ export default class FsWatcher {
             ignoreInitial: true
         }).on('all', (e, p) => {
             this.onFileEvent()
+        }).on('error', (e) => {
+            this.logger.warning('Watch error', {error: e})
         })
     }
 

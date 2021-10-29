@@ -4,7 +4,7 @@
     <div v-if="loading > 0" class="loader"><img src="/1496.gif" /></div>
 
     <b-navbar toggleable="lg" type="dark" variant="info">
-      <b-navbar-brand href="#">Hen-Backup WebUI</b-navbar-brand>
+      <b-navbar-brand to="/">Hen-Backup WebUI</b-navbar-brand>
 
         <b-navbar-toggle target="nav-collapse"></b-navbar-toggle>
 
@@ -53,6 +53,9 @@ class Client extends EventEmitter {
   }
   async getJobs() {
     return this.call('/jobs')
+  }
+  async getJob(uuid) {
+    return this.call('/jobs/'+encodeURI(uuid))
   }
   async getSummary() {
     return this.call('/summary')
