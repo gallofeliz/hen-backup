@@ -7,6 +7,7 @@ import basicAuth from 'express-basic-auth'
 import { json as jsonParser } from 'body-parser'
 import { basename } from 'path'
 import { Socket } from 'net'
+import HtpasswdValidator from 'htpasswd-verify'
 
 export default class Api {
     protected logger: Logger
@@ -21,8 +22,12 @@ export default class Api {
         this.app = express()
         this.config = config
 
+        const htpasswordValidator = new HtpasswdValidator(config.users.reduce((dict, user) => ({...dict, [user.username]: user.password}), {}))
+
         this.app.use(basicAuth({
-            users: config.users.reduce((dict, user) => ({...dict, [user.username]: user.password}), {}),
+            authorizer(inputUsername: string, inputPassword: string) {
+                return htpasswordValidator.verify(inputUsername, inputPassword)
+            },
             challenge: true
         }))
 

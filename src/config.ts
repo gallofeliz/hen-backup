@@ -38,6 +38,8 @@ export interface Config {
                 schedules: string[]
                 priority?: string
             },
+            uploadLimit?: string
+            downloadLimit?: string
             providerEnv: Record<string, string>
         }
     }
@@ -54,8 +56,6 @@ export interface Config {
                     max: string
                 }
             }
-            uploadLimit?: string
-            downloadLimit?: string
             priority?: string
             prune?: {
                 schedules?: string[]

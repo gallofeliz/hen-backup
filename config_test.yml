@@ -13,7 +13,7 @@ api:
     - username: big
       password: boss
     - username: admin
-      password: admin
+      password: $2y$05$iDa0IeAeA2M4y6USukUm2eBeTnWuN24eaGGTsVhT4U6qLElRyqgk.
 
 repositories:
   global_dd:

@@ -205,7 +205,8 @@ export default class Daemon {
                             args,
                             {
                                 repository: repository,
-                                logger: job.getLogger()
+                                logger: job.getLogger(),
+                                ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
                             }
                         )
 
@@ -257,7 +258,8 @@ export default class Daemon {
                         ],
                         {
                             repository: repository,
-                            logger: job.getLogger()
+                            logger: job.getLogger(),
+                            ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
                         }
                     )
 
@@ -318,7 +320,8 @@ export default class Daemon {
                         {
                             repository: repository,
                             logger: job.getLogger(),
-                            outputStream: stream
+                            outputStream: stream,
+                            ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
                         }
                     )
 
@@ -354,7 +357,8 @@ export default class Daemon {
                         [],
                         {
                             repository: repository,
-                            logger: job.getLogger()
+                            logger: job.getLogger(),
+                            ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
                         }
                     )
 
@@ -425,8 +429,7 @@ export default class Daemon {
                                 {
                                     repository: repository,
                                     logger: job.getLogger(),
-                                    ...backup.uploadLimit !== undefined && { uploadLimit: backup.uploadLimit },
-                                    ...backup.downloadLimit !== undefined && { downloadLimit: backup.downloadLimit },
+                                    ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
                                 }
                             )
 
@@ -507,8 +510,7 @@ export default class Daemon {
                                 {
                                     repository: repository,
                                     logger: job.getLogger(),
-                                    ...backup.uploadLimit !== undefined && { uploadLimit: backup.uploadLimit },
-                                    ...backup.downloadLimit !== undefined && { downloadLimit: backup.downloadLimit },
+                                    ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
                                 }
                             )
 
@@ -625,7 +627,8 @@ export default class Daemon {
                         [],
                         {
                             repository: repository,
-                            logger: job.getLogger()
+                            logger: job.getLogger(),
+                            ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
                         }
                     )
 
@@ -648,7 +651,8 @@ export default class Daemon {
             [],
             {
                 repository: repository,
-                logger: job.getLogger()
+                logger: job.getLogger(),
+                ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
             }
         )
 
