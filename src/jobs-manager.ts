@@ -112,7 +112,9 @@ export class Job extends EventEmitter {
             }
 
             // WARNING IN CASE OF VERBOSE
-            this.runLogs.push(_.omit(log, ['job']))
+            const runLog = _.omit(log, ['job'])
+            this.runLogs.push(runLog)
+            this.emit('log', runLog)
         }
 
         this.logger.on('log', runningLoggerListener)

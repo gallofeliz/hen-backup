@@ -66,7 +66,39 @@ export default class Api {
 
         apiRouter.get('/jobs/:job', async (req, res, next) => {
             try {
-                res.send(await daemon.getJob(req.params.job))
+                res.send(await daemon.getJob(req.params.job).toJson(true))
+            } catch (e) {
+                next(e)
+            }
+        })
+
+        apiRouter.get('/jobs/:job/realtime-logs', (req, res, next) => {
+            try {
+                const job = daemon.getJob(req.params.job)
+                const fromBeginning = !!req.query['from-begin']
+
+                res.set('Content-Type', 'application/x-ndjson')
+
+                if (fromBeginning) {
+                    job.getRunLogs().forEach(runLog => res.write(JSON.stringify(runLog) + '\n'))
+                }
+
+                if (['success', 'failure', 'aborted', 'canceled'].includes(job.getState())) {
+                    return res.end()
+                }
+
+                job.on('log', (runLog) => {
+                    res.write(JSON.stringify(runLog) + '\n')
+                })
+
+                const close = () => {
+                    res.end()
+                    req.off('close', close)
+                }
+
+                req.once('close', close)
+                job.once('canceled', close)
+                job.once('ended', close)
             } catch (e) {
                 next(e)
             }

@@ -57,6 +57,33 @@ class Client extends EventEmitter {
   async getJob(uuid) {
     return this.call('/jobs/'+encodeURI(uuid))
   }
+  getJobRealtimeLogs(uuid) {
+    const logsListener = new EventEmitter
+    const controller = new AbortController
+    const signal = controller.signal
+
+    logsListener.abort = () => {
+      controller.abort()
+    }
+
+    ;(async () => {
+      const reader = await this.call('/jobs/'+encodeURI(uuid)+'/realtime-logs?from-begin=true', { json: false, stream: true, signal })
+      let ddone = false
+
+      while (!ddone) {
+          let {done, value} = await reader.read()
+          ddone = done
+          value = new TextDecoder("utf-8").decode(value)
+          const lines = value.split('\n').filter(l => l)
+          const runLogs = lines.map(l => JSON.parse(l))
+
+          runLogs.forEach(l => logsListener.emit('log', l))
+      }
+      logsListener.emit('end')
+    })()
+
+    return logsListener
+  }
   async getSummary() {
     return this.call('/summary')
   }
@@ -78,13 +105,18 @@ class Client extends EventEmitter {
       {json: false, method: 'POST'}
     )
   }
-  async call(url, {json, method} = {}) {
+  async call(url, {json, method, stream, signal} = {}) {
     return this.handleEvents(async () => {
-      const response = await fetch('/api' + url, {method: method || 'GET'})
+      const response = await fetch('/api' + url, {method: method || 'GET', signal})
       if (!response.ok) {
         throw new Error(await response.text())
       }
-      return json !== false ? response.json() : undefined
+      if (json !== false) {
+        return response.json()
+      }
+      if (stream === true) {
+        return response.body.getReader()
+      }
     })
   }
   async handleEvents(callFn) {

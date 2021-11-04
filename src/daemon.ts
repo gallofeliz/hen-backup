@@ -154,8 +154,8 @@ export default class Daemon {
         return allJobs
     }
 
-    public async getJob(jobUuid: string) {
-        return this.jobsManager.getJob(jobUuid).toJson(true)
+    public getJob(jobUuid: string): Job {
+        return this.jobsManager.getJob(jobUuid)
     }
 
     public listSnapshots(criterias: {backupName?: string, repositoryName?: string}, trigger: 'api') {

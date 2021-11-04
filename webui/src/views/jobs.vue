@@ -5,6 +5,7 @@
       <b-table striped hover :items="filteredJobs.queue" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
+          (queuing since {{ row.item.createdAt | formatAgo }})
         </template>
       </b-table>
       Cancel ? Change priority ?
@@ -12,10 +13,12 @@
       <b-table striped hover :items="filteredJobs.running" :fields="['uuid', 'createdAt', 'startedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]">
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
+          (queued during {{ row.item.createdAt | formatDuring(row.item.startedAt) }})
         </template>
 
         <template #cell(startedAt)="row">
           {{ row.item.startedAt | formatDate }}
+          (running since {{ row.item.startedAt | formatAgo }})
         </template>
         <template #cell(actions)="row">
           <b-button size="sm" @click="showDetails(row.item.uuid)">
@@ -31,14 +34,17 @@
 
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
+          (queued during {{ row.item.createdAt | formatDuring(row.item.startedAt) }})
         </template>
 
         <template #cell(startedAt)="row">
           {{ row.item.startedAt | formatDate }}
+          (run during {{ row.item.startedAt | formatDuring(row.item.endedAt) }})
         </template>
 
         <template #cell(endedAt)="row">
           {{ row.item.endedAt | formatDate }}
+          (ended since {{ row.item.endedAt | formatAgo }})
         </template>
 
         <template #cell(state)="row">
@@ -48,7 +54,7 @@
 
         <template #cell(actions)="row">
           <b-button size="sm" @click="showDetails(row.item.uuid)">
-            Details
+            See logs
           </b-button>
         </template>
 
@@ -57,9 +63,8 @@
     </div>
 
     <b-modal ref="my-modal" :title="explain.title" size="xl" scrollable>
-      <div class="d-block" v-if="explain.job">
-        <p>Warning : No auto update</p>
-        <pre>{{explain.job.runLogs}}</pre>
+      <div class="d-block" v-if="explain.runLogs">
+        <pre>{{explain.runLogs}}</pre>
       </div>
       <template #modal-footer>
         <div>
@@ -83,6 +88,18 @@ export default {
     backup: String
   },
   filters: {
+    formatDuring(date1, date2) {
+      if (!date1 || !date2) {
+        throw new Error('Invalid date')
+      }
+      return moment(date2).from(date1, true)
+    },
+    formatAgo(date) {
+      if (!date) {
+        throw new Error('Invalid date')
+      }
+      return moment(date).fromNow()
+    },
     formatDate(date) {
       if (!date) {
         throw new Error('Invalid date')
@@ -133,9 +150,42 @@ export default {
     },
     async showDetails(uuid) {
       this.explain = {
-        job: await this.foregroundClient.getJob(uuid),
-        title: 'Job ' + uuid
+        runLogs: [],
+        title: 'Job ' + uuid + ' logs (realtime)'
       }
+
+      const logsListener = this.foregroundClient.getJobRealtimeLogs(uuid)
+
+      logsListener.on('log', (log) => {
+        this.explain.runLogs.push(log)
+        const modal = this.$refs['my-modal'].getActiveElement()
+        const modalBody = modal && modal.querySelector('.modal-body')
+
+        if (!modalBody) {
+          return
+        }
+
+        const isAtBottom = modalBody.scrollTop + modalBody.offsetHeight === modalBody.scrollHeight
+
+        if (!isAtBottom) {
+          return
+        }
+
+        this.$nextTick(() => {
+          this.$nextTick(() => {
+              modalBody.scrollTop = Number.MAX_SAFE_INTEGER
+          })
+        })
+      })
+
+      logsListener.once('end', () => {
+        logsListener.removeAllListeners()
+      })
+
+      this.$refs['my-modal'].$once('hide', () => {
+        logsListener.removeAllListeners()
+        logsListener.abort()
+      })
 
       this.$refs['my-modal'].show()
     },
@@ -143,7 +193,7 @@ export default {
       this.$refs['my-modal'].hide()
       this.explain = {
         title: null,
-        job: null
+        runLogs: null
       }
     }
   },
@@ -153,7 +203,7 @@ export default {
         timer: null,
         explain: {
           title: null,
-          job: null
+          runLogs: null
         }
     }
   },
