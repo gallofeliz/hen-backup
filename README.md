@@ -1,5 +1,7 @@
 # Hen-Backup
 
+![](https://github.com/gallofeliz/hen-backup/blob/03dc82560c826dd5546d087aa4c9f7404897ba01/Capture%20du%202021-11-04%2001-29-57.png)
+
 Hen-Backup is a backup tool designed to be automatic, complete and flexible. Its values are :
 - Automatic (Daemon)
 - Monitorable (logs are json and written to be collected and produce metrics to have supervision)
