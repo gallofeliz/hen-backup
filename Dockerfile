@@ -1,17 +1,31 @@
-FROM python:3.8-alpine3.12
+FROM node:alpine3.12 AS webui
 
-RUN apk add --no-cache restic && restic self-update
+WORKDIR /build
+ADD webui/package.json webui/package-lock.json ./
+RUN npm i
+ADD webui ./
+RUN npm run build
 
-RUN pip install flatten-dict rpyc click tabulate requests retrying glom
 
-RUN apk add --update --no-cache --virtual .tmp git \
-    && pip install git+https://github.com/gallofeliz/python-gallocloud-utils \
-    && apk del .tmp
+FROM node:alpine3.12 AS core
 
+WORKDIR /build
+ADD package.json package-lock.json ./
+RUN npm i
+ADD src tsconfig.json ./
+RUN npm run build
+RUN npm prune --production
+
+FROM node:alpine3.12
+
+RUN apk add --no-cache restic tzdata \
+    && restic self-update \
+    && mkdir /var/cache/restic \
+    && chmod 1777 /var/cache/restic
 WORKDIR /app
-
-ADD main.py daemon.py restic.py client.py ./
-
-RUN chmod +x client.py && ln -s /app/client.py /bin/client
-
-CMD python -u ./main.py
+COPY --from=core /build/dist ./
+COPY --from=core /build/node_modules node_modules
+COPY --from=webui /build/dist webui
+VOLUME /var/cache/restic
+USER nobody
+CMD node .

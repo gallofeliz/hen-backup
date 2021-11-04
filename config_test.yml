@@ -6,6 +6,15 @@ log:
 uploadLimit: 50K
 downloadLimit: 200K
 
+api:
+  port: 8080
+  # List of users to add ability of "scopes" without using super admin user
+  users:
+    - username: big
+      password: boss
+    - username: admin
+      password: $2y$05$iDa0IeAeA2M4y6USukUm2eBeTnWuN24eaGGTsVhT4U6qLElRyqgk.
+
 repositories:
   global_dd:
     location: /repositories/global
@@ -57,6 +66,17 @@ backups:
     uploadLimit: ~
     downloadLimit: ~
     priority: superior
+    prune:
+      schedules:
+        - 3m
+      priority: inferior
+      retentionPolicy:
+        nbOfHourly: 24
+        nbOfdaily: 7
+        nbOfWeekly: 4
+        nbOfMonthly: 12
+        nbOfYearly: 5
+        minTime: 1h
     #- BACKUP_APP1_PRIORITY_IMMEDIATE_AFTER=xxx ?
     #- BACKUP_APP1_STOP_AFTER=xxx ?
     hooks:

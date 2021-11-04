@@ -1,0 +1,45 @@
+{
+  "name": "backuper",
+  "version": "1.0.0",
+  "description": "Hen-Backup is a backup tool designed to be automatic, complete and flexible. Its values are : - Automatic (Daemon) - Monitorable (logs are json and written to be collected and produce metrics to have supervision) - Encrypted - Unlimited backups definitions (define a backup for a database, other for your music, other for your pictures, etc) - Unlimited repositories definitions, for one or multi backups. Note that repositories are not redundancy. You can have redundancy with a RAID, a cloud provider, etc. Repositories are not connected and there will have n snapshots, with different dates, different ids, etc. We can imagine in the futur different rentention policies or others differences, but for that for the moment better use two backup definitions (different paths, rentention policies, etc are exactly what is a backup definition !) - Multi providers support (OVH, AWS, filesystem, etc) - Resources limitation for guys like me that have a slow internet ;) and slow computer",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gallofeliz/backuper.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/gallofeliz/backuper/issues"
+  },
+  "homepage": "https://github.com/gallofeliz/backuper#readme",
+  "dependencies": {
+    "@tuplo/envsubst": "^1.13.0",
+    "bluebird": "^3.7.2",
+    "body-parser": "^1.19.0",
+    "chokidar": "^3.5.2",
+    "cron-parser": "^4.0.0",
+    "express": "^4.17.1",
+    "express-basic-auth": "^1.2.0",
+    "got": "^11.8.2",
+    "htpasswd-verify": "github:gallofeliz/htpasswd-verify",
+    "lodash": "^4.17.21",
+    "uuid": "^8.3.2",
+    "winston": "^3.3.3",
+    "yaml": "^1.10.2"
+  },
+  "devDependencies": {
+    "@types/bluebird": "^3.5.36",
+    "@types/express": "^4.17.13",
+    "@types/lodash": "^4.14.175",
+    "@types/node": "^16.10.2",
+    "@types/uuid": "^8.3.1",
+    "typescript": "^4.4.3"
+  }
+}

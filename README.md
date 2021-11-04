@@ -5,11 +5,19 @@ Hen-Backup is a backup tool designed to be automatic, complete and flexible. Its
 - Monitorable (logs are json and written to be collected and produce metrics to have supervision)
 - Encrypted
 - Unlimited backups definitions (define a backup for a database, other for your music, other for your pictures, etc)
-- Unlimited repositories definitions, for one or multi backups
+- Unlimited repositories definitions, for one or multi backups. Note that repositories are not redundancy. You can have redundancy with a RAID, a cloud provider, etc. Repositories are not connected and there will have n snapshots, with different dates, different ids, etc. We can imagine in the futur different rentention policies or others differences, but for that for the moment better use two backup definitions (different paths, rentention policies, etc are exactly what is a backup definition !)
 - Multi providers support (OVH, AWS, filesystem, etc)
 - Resources limitation for guys like me that have a slow internet ;) and slow computer
 
 Backup uses Restic for operations. It's like a Restic supervisor !
+
+Notes : The daemon is chrooted on its hostname. Restic is used and able to do everything crazy, but globally for me it's not a very good idea to store every devices in the same repository (yes, it depends of the situation, but what I don't like it's that everybody can see everybody and delete others, especially in case of intrusion). And so, we will not develop a factory to handle external repositories, others hostname, etc. So the idea is to chroot ! If you want to manage other hostname, please call the api of its daemon, or run a daemon (todo add "readonly/recovery" mode) to operate on it.
+
+As Restic is used as tool, the "super" maintenance has to been done directly with Restic.
+
+## Limitations
+
+Currently the code doesn't use iterators, and can suffer of big amounts of data on some operations (search snapshots, get snapshot description etc). These limitations are not "in-design" and so can be fixed. However, nothing better than Restic can do can be done.
 
 ## Use
 
@@ -27,9 +35,7 @@ Notes:
 
 ## Interraction
 
-You can use the CLI client to interract with the daemon :
-- `sudo docker-compose exec backup client list-snapshots ovh-frankfort -b grafana` will list all the grafana snapshots on OVH Frankfort
-- `sudo docker-compose exec backup client restore-snapshot aws-ireland-pictures snapshot_sha --priority next`
+A WebUI can be used, and the Daemon is callable with an API to make operations. The API is the new and unique way to communicate with the Daemon.
 
 ## Doc
 
@@ -44,6 +50,24 @@ There is no doc because it is a personal project. Notes :
 
 Even if most of the job is done by Restic (https://github.com/restic/restic), this tool is not a Restic frontend. Restic can be removed for another backup app without changing contracts or features of Hen-Backup, and some Restic logics can be overrided by mine.
 
-## Ideas / futur devs
-- Repositories rotation (riskless prune) and cleaning (?)
-- Better handle of locks (release at end and release after inactivity)
+## Logs refactoring
+
+- There are some triggers : scheduling, files watching, cli, ui
+- There are some tasks/actions : backup, prune, check repo, etc
+- The flow is : a trigger requests an action as task, and this task is added to a queue.
+
+It should be good to scope everything inside that. Maybe an extendable logger with "nodes" of "parent". trigger > action > subaction > restic.
+
+treenodes was a idea but I am not sure it's really the solution. Every thinks (trigger, action, etc) should have like "identity". And the base is the action/task. So the task should be linked to that, maybe the task exec should receive args like logger, I don't know.
+
+And Restic can stays a long time "frozen". Maybe should be good to have tasks and/or restic logs each x time to recorder what happens (like 5 tasks in queue, 1 running, etc).
+
+## Web UI instead of cli ?
+
+Should be user friendly :)
+
+## Ideas
+
+- Refacto with node to be simpler ?
+- Add read-only/mainteance mode to mount a backup daemon (for example server2) to fetch some infos or recovery it without making backup
+- Add in UI hightlight on backup column for unknown backup definition (+ ability to delete them)
