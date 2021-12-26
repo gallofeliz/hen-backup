@@ -37,7 +37,7 @@
       <h1>Repositories checks</h1>
       <div v-for="(checkStatus, repositoryName) in summary.checks" :key="repositoryName" class="status-element">
         <b-icon-server class="icon"></b-icon-server>
-        {{repositoryName}}
+        {{repositoryName}} <span v-if="repositoriesStats[repositoryName] && Object.keys(repositoriesStats[repositoryName]).length > 0">(<span class="repostat" v-if="repositoriesStats[repositoryName].size">{{repositoriesStats[repositoryName].size | formatSize}}</span><span class="repostat" v-if="repositoriesStats[repositoryName].billing">{{repositoriesStats[repositoryName].billing | formatBilling}}</span>)</span>
         <p>
           Last run :
           <span v-if="checkStatus.lastArchivedJob">
@@ -118,6 +118,20 @@ export default {
   props: {
   },
   filters: {
+    formatSize(sizeStat) {
+      let str = sizeStat.value + 'B'
+      if (sizeStat.shareName) {
+        str += ' shared ' + sizeStat.shareName
+      }
+      return str
+    },
+    formatBilling(billingStat) {
+      let str = billingStat.value + ' ' + billingStat.currency
+      if (billingStat.shareName) {
+        str += ' shared ' + billingStat.shareName
+      }
+      return str
+    },
     formatAgo(date) {
       if (!date) {
         throw new Error('Invalid date')
@@ -133,6 +147,7 @@ export default {
   },
   created() {
     this.retrieveSummary()
+    this.retrieveStats()
     // Use https://www.npmjs.com/package/express-ws to get realtime jobs changes ?
     this.timer = setInterval(() => {
       this.retrieveSummary()
@@ -141,6 +156,9 @@ export default {
   methods: {
     async retrieveSummary() {
         this.summary = await this.backgroundClient.getSummary()
+    },
+    async retrieveStats() {
+        this.repositoriesStats = await this.backgroundClient.getRepositoriesStats()
     },
     cancelAutoUpdate() {
         clearInterval(this.timer)
@@ -164,7 +182,8 @@ export default {
   data() {
     return {
         summary: null,
-        timer: null
+        timer: null,
+        repositoriesStats: {}
     }
   },
   beforeDestroy () {
@@ -186,5 +205,8 @@ export default {
         height: 40px;
         margin: 0 10px 10px 0;
         vertical-align: middle;
+    }
+    .repostat:not(:first-child)::before {
+        content: ' | ';
     }
 </style>
