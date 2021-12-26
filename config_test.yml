@@ -15,6 +15,13 @@ api:
     - username: admin
       password: $2y$05$iDa0IeAeA2M4y6USukUm2eBeTnWuN24eaGGTsVhT4U6qLElRyqgk.
 
+repositoriesSharedStats:
+  billing:
+    ovh_xx:
+      type: http
+      url: https://mockbin.org/bin/f02467dc-7278-4861-9466-30103ca27491
+      currency: EUR
+
 repositories:
   global_dd:
     location: /repositories/global
@@ -23,6 +30,12 @@ repositories:
       schedules:
         - 1d
       priority: inferior
+    stats:
+      size:
+        type: http
+        url: https://mockbin.org/bin/06d4e319-2fe5-4633-b99b-1781575c952e
+        group: ~
+      billing: ovh_xx
 
 backups:
   app1:
@@ -50,6 +63,9 @@ backups:
           username: "user-xx"
           password: "xx"
           identity_api_version: 3
+        stats:
+          billing: ovh_xx
+
     paths:
       - /sources
     excludes:

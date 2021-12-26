@@ -21,6 +21,14 @@ export interface Hook {
     onfailure?: 'continue' | 'stop' | 'ignore'
 }
 
+export interface StatFetch {
+    type: 'http'
+    url: string
+    method?: string
+    timeout?: string
+    retries?: number
+}
+
 export interface Config {
     hostname: string
     uploadLimit?: string
@@ -41,6 +49,17 @@ export interface Config {
             uploadLimit?: string
             downloadLimit?: string
             providerEnv: Record<string, string>
+            stats?: {
+              size: StatFetch & {
+                  // Expect a Bytes value (maybe later a more complex detailed object)
+                  shareName?: string
+              }
+              billing: StatFetch & {
+                  // Expect a currency value (maybe later a more complex detailed object)
+                  currency: string
+                  shareName?: string
+              }
+            }
         }
     }
     backups: {
@@ -148,6 +167,21 @@ export default function loadConfig(): Config {
                 }, {})
 
                 delete repository[providerName]
+            }
+        }
+
+        if (repository.stats) {
+            for (const statName in repository.stats) {
+                if (typeof repository.stats[statName] === 'string') {
+                    const shareName = repository.stats[statName]
+                    repository.stats[statName] = config.repositoriesSharedStats[statName][shareName]
+
+                    if (!repository.stats[statName]) {
+                        throw new Error('Shared Stat ' + shareName + ' not found')
+                    }
+
+                    repository.stats[statName].shareName = shareName
+                }
             }
         }
 

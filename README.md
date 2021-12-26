@@ -73,3 +73,5 @@ Should be user friendly :)
 - Refacto with node to be simpler ?
 - Add read-only/mainteance mode to mount a backup daemon (for example server2) to fetch some infos or recovery it without making backup
 - Add in UI hightlight on backup column for unknown backup definition (+ ability to delete them)
+- Add x concurrent jobs with collisions detection ?
+- Add a max time for a job/backup to avoid to freeze the jobs in queue ?

@@ -1,5 +1,5 @@
 import { Logger } from './logger'
-import { Config, Hook } from './config'
+import { Config, Hook, StatFetch } from './config'
 import FnScheduler from './fn-scheduler'
 import JobsManager, { Job } from './jobs-manager'
 import FsWatcher from './fs-watcher'
@@ -64,6 +64,77 @@ export default class Daemon {
                 repositories: backup['repositories']
             }))
         }
+    }
+
+    public async getRepositoriesStats() {
+        const sharedResolutions: any = {
+            size: {},
+            billing: {}
+        }
+
+        // TODO refacto and call parallel
+
+        const getStat = async (statConfig: StatFetch) => {
+            if (statConfig.type !== 'http') {
+                throw new Error('Only http implemented')
+            }
+
+            const request = got({
+                method: statConfig.method as GotMethod || 'GET',
+                url: statConfig.url,
+                timeout: statConfig.timeout ? durationToSeconds(statConfig.timeout) * 1000 : undefined,
+                retry: statConfig.retries || 0,
+                hooks: {
+                    beforeRequest: [options  => {this.logger.info('Calling stat ' + options.url)}],
+                    afterResponse: [response => { this.logger.info('Stat returned code ' + response.statusCode) ; return response }],
+                    beforeError: [error => { this.logger.info('Stat returned error ' + error.message) ; return error }]
+                }
+            })
+
+            return request.json()
+        }
+
+        return await asyncReduce(Object.keys(this.config.repositories), async (stats, repositoryName) => {
+            const repositoryStatsConf = this.config.repositories[repositoryName].stats
+
+            return {...stats, ...{
+                [repositoryName]: {
+                    size: repositoryStatsConf && repositoryStatsConf.size ? {
+                        value: await (async () => {
+                            if (repositoryStatsConf.size.shareName && sharedResolutions.size[repositoryStatsConf.size.shareName]) {
+                                return sharedResolutions.size[repositoryStatsConf.size.shareName]
+                            }
+
+                            const resolver = getStat(repositoryStatsConf.size)
+
+                            if (repositoryStatsConf.size.shareName) {
+                                sharedResolutions.size[repositoryStatsConf.size.shareName] = resolver
+                            }
+
+                            return resolver
+                        })(),
+                        shareName: repositoryStatsConf.size.shareName
+                    } : null,
+                    billing: repositoryStatsConf && repositoryStatsConf.billing ? {
+                        value: await (async () => {
+                            if (repositoryStatsConf.billing.shareName && sharedResolutions.billing[repositoryStatsConf.billing.shareName]) {
+                                return sharedResolutions.billing[repositoryStatsConf.billing.shareName]
+                            }
+
+                            const resolver = getStat(repositoryStatsConf.billing)
+
+                            if (repositoryStatsConf.billing.shareName) {
+                                sharedResolutions.billing[repositoryStatsConf.billing.shareName] = resolver
+                            }
+
+                            return resolver
+                        })(),
+                        currency: repositoryStatsConf.billing.currency,
+                        shareName: repositoryStatsConf.billing.shareName
+                    } : null
+                }
+            }}
+        }, {})
     }
 
     public async getSummary() {

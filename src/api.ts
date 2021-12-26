@@ -41,6 +41,14 @@ export default class Api {
             res.send(daemon.getConfigSummary())
         })
 
+        apiRouter.get('/stats/repositories', async (req, res, next) => {
+            try {
+                res.send(await daemon.getRepositoriesStats())
+            } catch (e) {
+                next(e)
+            }
+        })
+
         apiRouter.post('/repositories/:repository/check', (req, res) => {
             daemon.checkRepository(req.params.repository, 'api', req.query.priority as string | undefined)
             res.end()
