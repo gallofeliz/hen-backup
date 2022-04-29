@@ -31,41 +31,6 @@ export default class Daemon {
         this.configureTriggers()
     }
 
-    public start() {
-        if (this.started) {
-            return
-        }
-        this.started = true
-        this.jobsManager.start()
-
-        Object.keys(this.config.repositories).forEach((repositoryName) => {
-            this.initRepository(repositoryName)
-        })
-
-        this.fnSchedulers.forEach(fnScheduler => fnScheduler.start())
-        this.fsWatchers.forEach(fsWatcher => fsWatcher.start())
-    }
-
-    public stop() {
-        if (!this.started) {
-            return
-        }
-        this.started = false
-        this.fnSchedulers.forEach(fnScheduler => fnScheduler.stop())
-        this.fsWatchers.forEach(fsWatcher => fsWatcher.stop())
-        this.jobsManager.stop()
-    }
-
-    public getConfigSummary() {
-        return {
-            hostname: this.config.hostname,
-            repositories: _.mapValues(this.config.repositories, () => ({})),
-            backups: _.mapValues(this.config.backups, (backup) => ({
-                repositories: backup['repositories']
-            }))
-        }
-    }
-
     public async getRepositoriesStats() {
         const sharedResolutions: any = {
             size: {},

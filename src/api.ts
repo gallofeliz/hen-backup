@@ -1,9 +1,11 @@
 import HttpServer from 'js-libs/http-server'
 import { ApiConfig } from './definitions'
 import { Logger } from 'js-libs/logger'
+import Application from './application'
+import { mapValues, pick } from 'lodash'
 
 export default class Api extends HttpServer {
-    constructor(config: ApiConfig, logger: Logger) {
+    constructor(config: ApiConfig, logger: Logger, app: Application) {
         super({
             port: config.port,
             auth: config.users && {
@@ -13,7 +15,8 @@ export default class Api extends HttpServer {
             logger,
             api: {
                 prefix: 'api',
-                routes: []
+                routes: [
+                ]
             }
         })
     }
@@ -31,28 +34,13 @@ export  class ApiOld {
     protected connections: Record<string, Socket> = {}
 
     constructor(config: ApiConfig, daemon: Daemon, logger: Logger) {
-        this.logger = logger
 
-        this.app = express()
-        this.config = config
-
-        const htpasswordValidator = new HtpasswdValidator(config.users.reduce((dict, user) => ({...dict, [user.username]: user.password}), {}))
-
-        this.app.use(basicAuth({
-            authorizer(inputUsername: string, inputPassword: string) {
-                return htpasswordValidator.verify(inputUsername, inputPassword)
-            },
-            challenge: true
-        }))
-
-        this.app.use(jsonParser())
-
-        const apiRouter = express.Router()
-        this.app.use('/api', apiRouter)
-        this.app.use('/', express.static('webui'))
-
-        apiRouter.get('/config', (req, res) => {
-            res.send(daemon.getConfigSummary())
+        get('/config', () => {
+                                        res.send({
+                                hostname: appConfig.hostname,
+                                repositories: mapValues(appConfig.repositories, (repository) => pick(repository, 'name') ),
+                                backups: mapValues(appConfig.backups, (backup) => pick(backup, 'name', 'repositories') )
+                            })
         })
 
         apiRouter.get('/stats/repositories', async (req, res, next) => {

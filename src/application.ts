@@ -7,6 +7,7 @@ import createLogger from './logger'
 import Api from './api'
 
 export default class Application {
+    protected config: AppConfig
     protected logger: Logger
     protected started: boolean = false
     protected api: Api
@@ -15,9 +16,10 @@ export default class Application {
     protected fsWatchers: FsWatcher[] = []
 
     constructor(config: AppConfig) {
+        this.config = config
         this.logger = createLogger(config.log)
         this.logger.info('App Initialization with config', { config })
-        this.api = new Api(config.api, this.logger)
+        this.api = new Api(config.api, this.logger, this)
         this.jobManager = new JobsManager(this.logger)
         this.configureSchedulesAndWatches()
     }
@@ -29,6 +31,10 @@ export default class Application {
 
         this.logger.info('App Starting')
         this.started = true
+
+        Object.keys(this.config.repositories).forEach((repositoryName) => {
+            this.initRepository(repositoryName)
+        })
 
         await this.startStopServices('start')
     }
