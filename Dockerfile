@@ -28,4 +28,4 @@ COPY --from=core /build/node_modules node_modules
 COPY --from=webui /build/dist webui
 VOLUME /var/cache/restic
 USER nobody
-CMD node .
+CMD node . /etc/backuper/config.yml

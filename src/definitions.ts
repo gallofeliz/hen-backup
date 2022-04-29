@@ -1,5 +1,6 @@
 import { Size, Duration } from 'js-libs/utils'
 import { Priority } from 'js-libs/jobs'
+import { Schedule } from 'js-libs/fn-scheduler'
 import { Method } from 'got'
 import { LogLevel } from 'js-libs/logger'
 
@@ -14,7 +15,7 @@ interface BaseHook {
 
 interface HttpRequest {
    url: string
-   method: Method
+   method?: Method
    timeout?: Duration
    retries?: integer
 }
@@ -44,15 +45,18 @@ interface HttpBillingStatFetch extends BaseStat, HttpRequest, BaseBillingStat {
 type SizeStatFetch = HttpSizeStatFetch
 type BillingStatFetch = HttpBillingStatFetch
 
-interface Repository {
+export interface Repository {
     name: string
     location: string
     password: string
     uploadLimit?: Size
     downloadLimit?: Size
-    providerEnv: Record<string, string>
-    check: {
-        schedules?: Duration[]
+    provider?: {
+        name: 'os' | 'aws' | 'st' | 'b2' | 'azure' | 'google' | 'rclone'
+        params: Record<string, string>
+    }
+    check?: {
+        schedules?: Schedule[]
         priority?: Priority
     }
     usageStats?: {
@@ -61,13 +65,13 @@ interface Repository {
     }
 }
 
-interface Backup {
+export interface Backup {
     name: string
     repositories: string[]
     paths: string[]
     excludes?: string[]
-    schedules?: Duration[]
-    priority: Priority
+    schedules?: Schedule[]
+    priority?: Priority
     watch?: {
         wait?: {
             min: Duration
@@ -75,8 +79,8 @@ interface Backup {
         }
     }
     prune?: {
-        schedules?: Duration[]
-        priority: Priority
+        schedules?: Schedule[]
+        priority?: Priority
         retentionPolicy: {
             nbOfHourly?: integer
             nbOfdaily?: integer
@@ -95,7 +99,7 @@ interface Backup {
 //     return hook.type === 'http'
 // }
 
-interface AppConfig {
+export interface AppConfig {
     hostname: string
     uploadLimit?: Size
     downloadLimit?: Size
@@ -128,12 +132,13 @@ export interface UserProvidedAppConfig {
             password: string
         }>
     }
-    repositories: Record<string, Repository>
-    backups: Record<string, Omit<Backup, 'repositories'> & {
-        repositories: Array<Repository | string>
+    repositories?: Record<string, Omit<Repository, 'name'>>
+    backups: Record<string, Omit<Backup, 'repositories' | 'name'> & {
+        repositories: Array<Repository | string> | Record<string, Omit<Repository, 'name'>>
     }>
     repositoriesSharedStats?: {
         size?: Record<string, SizeStatFetch>
         billing?: Record<string, BillingStatFetch>
     }
 }
+

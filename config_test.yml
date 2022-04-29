@@ -53,16 +53,18 @@ backups:
       - name: app1_ovh
         location: swift:xx:/
         password: abc
-        os:
-          auth_url: https://auth.cloud.ovh.net/v3
-          project_id: xx
-          project_name: "xx"
-          region_name: "GRA"
-          user_domain_name: "Default"
-          project_domain_id: "default"
-          username: "user-xx"
-          password: "xx"
-          identity_api_version: 3
+        provider:
+          name: 'os'
+          params:
+            auth_url: https://auth.cloud.ovh.net/v3
+            project_id: xx
+            project_name: "xx"
+            region_name: "GRA"
+            user_domain_name: "Default"
+            project_domain_id: "default"
+            username: "user-xx"
+            password: "xx"
+            identity_api_version: 3
         stats:
           billing: ovh_xx
 
@@ -105,6 +107,9 @@ backups:
         #- BACKUP_APP1_HOOKS_BEFORE_ASYNC= put next of backup process on the queue in case of hook very long ?
         # Add a endpoint trigger to run backup if a service call a http endpoint ?
   app2:
+    paths:
+      - /test
     repositories:
       app2_dd:
         location: iua
+        password: hello

@@ -7,7 +7,7 @@
     "test": "test"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc && ts-json-schema-generator --path definitions.ts --type UserProvidedAppConfig --no-top-ref > dist/user-provided-app-config-schema.json"
   },
   "repository": {
     "type": "git",
@@ -29,6 +29,7 @@
     "express-basic-auth": "^1.2.0",
     "got": "^11.8.2",
     "htpasswd-verify": "github:gallofeliz/htpasswd-verify",
+    "js-libs": "github:gallofeliz/js-libs",
     "lodash": "^4.17.21",
     "uuid": "^8.3.2",
     "winston": "^3.3.3",
@@ -40,6 +41,7 @@
     "@types/lodash": "^4.14.175",
     "@types/node": "^16.10.2",
     "@types/uuid": "^8.3.1",
-    "typescript": "^4.4.3"
+    "ts-json-schema-generator": "^1.0.0",
+    "typescript": "^4.6.3"
   }
 }
