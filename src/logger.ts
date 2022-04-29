@@ -1,7 +1,7 @@
 import { createLogger as createWinstonLogger, format, transports, Logger, config } from 'winston'
 import { mapValues, cloneDeep } from 'lodash'
 import { Writable } from 'stream'
-
+import { LogConfig } from './definitions'
 export { Logger }
 
 const secrets = ['password', 'key', 'secret', 'auth', 'token', 'credential']
@@ -32,7 +32,7 @@ function sanitize(variable: any): any {
     return variable
 }
 
-export default function createLogger(level: string): Logger {
+export default function createLogger({level}: LogConfig): Logger {
     const stream = new Writable({objectMode: true})
 
     const logger = createWinstonLogger({

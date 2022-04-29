@@ -99,20 +99,24 @@ export interface Backup {
 //     return hook.type === 'http'
 // }
 
+export interface ApiConfig {
+    port: integer
+    users?: Array<{
+        username: string
+        password: string
+    }>
+}
+
+export interface LogConfig {
+    level: LogLevel
+}
+
 export interface AppConfig {
     hostname: string
     uploadLimit?: Size
     downloadLimit?: Size
-    log: {
-        level: LogLevel
-    }
-    api: {
-        port: integer
-        users?: Array<{
-            username: string
-            password: string
-        }>
-    }
+    log: LogConfig
+    api: ApiConfig
     repositories: Record<string, Repository>
     backups: Record<string, Backup>
 }
@@ -122,16 +126,8 @@ export interface UserProvidedAppConfig {
     hostname?: string
     uploadLimit?: Size
     downloadLimit?: Size
-    log?: {
-        level?: LogLevel
-    }
-    api?: {
-        port?: integer
-        users?: Array<{
-            username: string
-            password: string
-        }>
-    }
+    log?: Partial<LogConfig>
+    api?: Partial<ApiConfig>
     repositories?: Record<string, Omit<Repository, 'name'>>
     backups: Record<string, Omit<Backup, 'repositories' | 'name'> & {
         repositories: Array<Repository | string> | Record<string, Omit<Repository, 'name'>>

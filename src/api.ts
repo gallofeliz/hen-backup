@@ -1,15 +1,29 @@
-import { Logger } from './logger'
-import { ApiConfig } from './config'
-import Daemon from './daemon'
-import express from 'express'
-import { Server } from 'http'
-import basicAuth from 'express-basic-auth'
-import { json as jsonParser } from 'body-parser'
-import { basename } from 'path'
-import { Socket } from 'net'
-import HtpasswdValidator from 'htpasswd-verify'
+import HttpServer from 'js-libs/http-server'
+import { ApiConfig } from './definitions'
+import { Logger } from 'js-libs/logger'
 
-export default class Api {
+export default class Api extends HttpServer {
+    constructor(config: ApiConfig, logger: Logger) {
+        super({
+            port: config.port,
+            auth: config.users && {
+                users: config.users
+            },
+            webUiFilesPath: 'webui',
+            logger,
+            api: {
+                prefix: 'api',
+                routes: []
+            }
+        })
+    }
+}
+
+
+
+import { basename } from 'path'
+
+export  class ApiOld {
     protected logger: Logger
     protected app: express.Application
     protected server?: Server

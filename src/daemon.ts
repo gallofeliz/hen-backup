@@ -79,19 +79,21 @@ export default class Daemon {
                 throw new Error('Only http implemented')
             }
 
-            const request = got({
-                method: statConfig.method as GotMethod || 'GET',
-                url: statConfig.url,
-                timeout: statConfig.timeout ? durationToSeconds(statConfig.timeout) * 1000 : undefined,
-                retry: statConfig.retries || 0,
-                hooks: {
-                    beforeRequest: [options  => {this.logger.info('Calling stat ' + options.url)}],
-                    afterResponse: [response => { this.logger.info('Stat returned code ' + response.statusCode) ; return response }],
-                    beforeError: [error => { this.logger.info('Stat returned error ' + error.message) ; return error }]
-                }
-            })
+            return Math.round(Math.random() * 100)
 
-            return request.json()
+            // const request = got({
+            //     method: statConfig.method as GotMethod || 'GET',
+            //     url: statConfig.url,
+            //     timeout: statConfig.timeout ? durationToSeconds(statConfig.timeout) * 1000 : undefined,
+            //     retry: statConfig.retries || 0,
+            //     hooks: {
+            //         beforeRequest: [options  => {this.logger.info('Calling stat ' + options.url)}],
+            //         afterResponse: [response => { this.logger.info('Stat returned code ' + response.statusCode) ; return response }],
+            //         beforeError: [error => { this.logger.info('Stat returned error ' + error.message) ; return error }]
+            //     }
+            // })
+
+            // return request.json()
         }
 
         return await asyncReduce(Object.keys(this.config.repositories), async (stats, repositoryName) => {

@@ -75,3 +75,6 @@ Should be user friendly :)
 - Add in UI hightlight on backup column for unknown backup definition (+ ability to delete them)
 - Add x concurrent jobs with collisions detection ?
 - Add a max time for a job/backup to avoid to freeze the jobs in queue ?
+- Add warnings in Job shown in the UI to see warnings (for example failed pre-hook ?)
+- Add progress for Job
+- Add "steps" in Job ?
