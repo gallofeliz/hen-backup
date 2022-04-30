@@ -95,6 +95,15 @@ export interface Backup {
     }
 }
 
+export interface Snapshot {
+    date: Date,
+    device: string,
+    backup: string,
+    job: string,
+    repository: string,
+    id: string
+}
+
 // function isHttpHook(hook: Hook): hook is HttpHook {
 //     return hook.type === 'http'
 // }

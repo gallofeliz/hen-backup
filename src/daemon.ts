@@ -683,36 +683,8 @@ export default class Daemon {
         )
     }
 
-    protected async unlockRepository(repository: Config['repositories'][0], job: Job) {
-        const resticCall = this.restic.call(
-            'unlock',
-            [],
-            {
-                repository: repository,
-                logger: job.getLogger(),
-                ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
-            }
-        )
-
-        job.once('abort', () => resticCall.abort())
-
-        await once(resticCall, 'finish')
-    }
 
 
-    protected extractValueFromTags(tags: string[], key: string) {
-        const tag = tags.find(tag => tag.substr(0, key.length + 1) === key + '-')
-
-        if (!tag) {
-            return
-        }
-
-        return tag.substr(key.length + 1)
-    }
-
-    protected formatTagValue(key: string, value: string) {
-        return key + '-' + value
-    }
 
     // def get_path_history(self, repository_name, backup_name, path, priority='immediate'):
     //     #sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD= restic find --long '/sources/.truc/.machin/super.txt' --json --tag backup-xxx --host host-xxx
