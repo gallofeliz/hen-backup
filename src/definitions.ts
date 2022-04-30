@@ -102,6 +102,7 @@ export interface Snapshot {
     job: string,
     repository: string,
     id: string
+    objects?: object[]
 }
 
 // function isHttpHook(hook: Hook): hook is HttpHook {

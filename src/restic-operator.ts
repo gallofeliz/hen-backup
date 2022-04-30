@@ -1,8 +1,8 @@
 import { Repository, Backup, Snapshot } from './definitions'
 import { Logger } from 'js-libs/logger'
 import runProcess, { ProcessConfig } from 'js-libs/process'
-import { reduce } from 'lodash'
-import { sizeToKiB } from 'js-libs/utils'
+import { reduce, flatten, map, omitBy, isNil } from 'lodash'
+import { sizeToKiB, durationToSeconds } from 'js-libs/utils'
 
 export interface ResticOperatorConfig {
     device: string
@@ -25,7 +25,19 @@ export default class ResticOperator {
         this.config = config
     }
 
-    public async listRepositorySnapshots(
+    public async initRepository(
+        {repository, logger, abortSignal}:
+        {repository: Repository, logger: Logger, abortSignal: AbortSignal}
+    ) {
+        await this.runRestic({
+            cmd: 'init',
+            repository,
+            logger,
+            abortSignal
+        })
+    }
+
+    public async listSnapshots(
         {repository, logger, device, backup, abortSignal}:
         {repository: Repository, logger: Logger, device?: string, backup?: Backup, abortSignal?: AbortSignal}
     ): Promise<Snapshot[]> {
@@ -51,6 +63,125 @@ export default class ResticOperator {
         }))
     }
 
+    public async forgetAndPrune(
+        {repository, logger, abortSignal, backup, device}:
+        {repository: Repository, logger: Logger, abortSignal?: AbortSignal, backup: Backup, device: string}
+    ) {
+        if (!backup.prune) {
+            throw new Error('No prune policy')
+        }
+
+        await this.unlockRepository({repository, logger, abortSignal})
+
+        const retentionPolicyMapping: Record<string, string> = {
+            'nbOfHourly': 'hourly',
+            'nbOfdaily': 'daily',
+            'nbOfWeekly': 'weekly',
+            'nbOfMonthly': 'monthly',
+            'nbOfYearly': 'yearly',
+            'minTime': 'within'
+        }
+
+        const retentionPolicyArgs: string[] = flatten(map(omitBy(backup.prune.retentionPolicy, isNil), (retentionValue, retentionKey) => {
+            if (!retentionPolicyMapping[retentionKey]) {
+                throw new Error('Unknown policy rule ' + retentionKey)
+            }
+
+            if (retentionKey === 'minTime') {
+                retentionValue = durationToSeconds(retentionValue as string)
+            }
+
+            return ['--keep-' + retentionPolicyMapping[retentionKey], retentionValue.toString()]
+        })) as string[]
+
+        await this.runRestic({
+            cmd: 'forget',
+            args: ['--prune', ...retentionPolicyArgs],
+            repository,
+            logger,
+            abortSignal,
+            device,
+            backup
+        })
+    }
+
+    public async backup(
+        {repository, logger, abortSignal, backup, device, job}:
+        {repository: Repository, logger: Logger, abortSignal?: AbortSignal, backup: Backup, device: string, job: string}
+    ) {
+        await this.unlockRepository({repository, logger, abortSignal})
+
+        await this.runRestic({
+            cmd: 'backup',
+            args: [
+                ...backup.paths,
+                ...backup.excludes ? backup.excludes.map(exclude => '--exclude=' + exclude) : []
+            ],
+            repository,
+            logger,
+            abortSignal,
+            device,
+            backup,
+            job
+        })
+    }
+
+    public async downloadSnapshot(
+        {repository, logger, abortSignal, format, snapshotId, path}:
+        {repository: Repository, logger: Logger, abortSignal?: AbortSignal, format: 'zip' | 'tar', snapshotId: string, path: string, stream: NodeJS.WritableStream}
+    ) {
+        await this.unlockRepository({repository, logger, abortSignal})
+
+        await this.runRestic({
+            logger,
+            repository,
+            abortSignal,
+            cmd: 'dump',
+            args: ['--archive', format, snapshotId, path],
+            outputStream: stream
+        })
+    }
+
+    public async getSnapshot(
+        {repository, logger, abortSignal, snapshotId}:
+        {repository: Repository, logger: Logger, abortSignal?: AbortSignal, snapshotId: string}
+    ): Promise<Snapshot> {
+        await this.unlockRepository({repository, logger, abortSignal})
+
+        const [infos, ...objects]: [ResticSnapshot, object[]] = await this.runRestic({
+            repository,
+            logger,
+            abortSignal,
+            cmd: 'ls',
+            args: ['--long', snapshotId],
+            outputType: 'multilineJson'
+        })
+
+        return {
+            date: new Date(infos.time),
+            repository: repository.name,
+            backup: this.extractValueFromTags(infos.tags, 'backup'),
+            job: this.extractValueFromTags(infos.tags, 'job'),
+            id: snapshotId,
+            device: infos.hostname,
+            objects: objects.map((o: object) => ({permissions: 'unknown', ...o}))
+        }
+    }
+
+    public async checkRepository(
+        {repository, logger, abortSignal}:
+        {repository: Repository, logger: Logger, abortSignal?: AbortSignal}
+    ) {
+        await this.unlockRepository({repository, logger, abortSignal})
+
+        await this.runRestic({
+            cmd: 'check',
+            repository,
+            logger,
+            abortSignal
+        })
+    }
+
     protected async unlockRepository(
         {repository, logger, abortSignal}:
         {repository: Repository, logger: Logger, abortSignal?: AbortSignal}
@@ -64,8 +195,9 @@ export default class ResticOperator {
     }
 
     protected async runRestic<T>(
-        {cmd, args, repository, logger, device, abortSignal, outputType, backup}:
-        {cmd: string, args?: string[], repository: Repository, logger: Logger, device?: string, abortSignal?: AbortSignal, outputType?: ProcessConfig['outputType'], backup?: Backup}
+        {cmd, args, repository, logger, device, abortSignal, outputType, backup, job, outputStream}:
+        {cmd: string, args?: string[], repository: Repository, logger: Logger, device?: string, outputStream?: NodeJS.WritableStream,
+         abortSignal?: AbortSignal, outputType?: ProcessConfig['outputType'], backup?: Backup, job?: string}
     ): Promise<T> {
         const cmdArgs: string[] = ['--cleanup-cache', ...args || []]
 
@@ -79,6 +211,10 @@ export default class ResticOperator {
 
         if (backup) {
             cmdArgs.push('--tag', this.formatTagValue('backup', backup.name))
+        }
+
+        if (job) {
+            cmdArgs.push('--tag', this.formatTagValue('job', job))
         }
 
         const uploadLimit = repository.uploadLimit || this.config.uploadLimit
@@ -105,7 +241,8 @@ export default class ResticOperator {
             args: cmdArgs,
             abortSignal,
             outputType,
-            killSignal: 'SIGINT'
+            killSignal: 'SIGINT',
+            outputStream
         }, true)
     }
 
