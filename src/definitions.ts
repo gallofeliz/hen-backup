@@ -3,6 +3,7 @@ import { Priority } from 'js-libs/jobs'
 import { Schedule } from 'js-libs/fn-scheduler'
 import { Method } from 'got'
 import { LogLevel } from 'js-libs/logger'
+import { ResticForgetPolicy, ResticRepository } from './restic-client'
 
 /** @type integer */
 type integer = number
@@ -45,16 +46,9 @@ interface HttpBillingStatFetch extends BaseStat, HttpRequest, BaseBillingStat {
 type SizeStatFetch = HttpSizeStatFetch
 type BillingStatFetch = HttpBillingStatFetch
 
-export interface Repository {
+
+export interface Repository extends ResticRepository {
     name: string
-    location: string
-    password: string
-    uploadLimit?: Size
-    downloadLimit?: Size
-    provider?: {
-        name: 'os' | 'aws' | 'st' | 'b2' | 'azure' | 'google' | 'rclone'
-        params: Record<string, string>
-    }
     check?: {
         schedules?: Schedule[]
         priority?: Priority
@@ -81,14 +75,7 @@ export interface Backup {
     prune?: {
         schedules?: Schedule[]
         priority?: Priority
-        retentionPolicy: {
-            nbOfHourly?: integer
-            nbOfdaily?: integer
-            nbOfWeekly?: integer
-            nbOfMonthly?: integer
-            nbOfYearly?: integer
-            minTime?: Duration
-        }
+        retentionPolicy: ResticForgetPolicy
     },
     hooks?: {
         before?: Hook
@@ -122,7 +109,7 @@ export interface LogConfig {
 }
 
 export interface AppConfig {
-    hostname: string
+    device: string
     uploadLimit?: Size
     downloadLimit?: Size
     log: LogConfig
@@ -133,7 +120,7 @@ export interface AppConfig {
 
 // ts-json-schema-generator --path src/definitions.ts --type UserProvidedAppConfig
 export interface UserProvidedAppConfig {
-    hostname?: string
+    device?: string
     uploadLimit?: Size
     downloadLimit?: Size
     log?: Partial<LogConfig>

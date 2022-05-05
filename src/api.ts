@@ -5,7 +5,10 @@ import Application from './application'
 import { mapValues, pick } from 'lodash'
 
 export default class Api extends HttpServer {
-    constructor(config: ApiConfig, logger: Logger, app: Application) {
+    constructor(
+        {config, logger}:
+        {config: ApiConfig, logger: Logger}
+    ) {
         super({
             port: config.port,
             auth: config.users && {

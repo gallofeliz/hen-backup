@@ -76,7 +76,7 @@ export default function loadConfig(filename: string): AppConfig {
             // }
 
             return {
-                hostname: userProvidedAppConfig.hostname || hostname(),
+                device: userProvidedAppConfig.device || hostname(),
                 log: {
                     level: userProvidedAppConfig.log?.level || 'info'
                 },
