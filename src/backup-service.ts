@@ -1,8 +1,16 @@
-import { Schedule } from 'js-libs/fn-scheduler'
-import { JobPriority } from './jobs-service'
 import { Duration } from 'js-libs/utils'
 import { ResticForgetPolicy} from './restic-client'
 import { Hook } from './hook-handler'
+import JobsService, { JobPriority } from './jobs-service'
+import RepositoriesService from './repositories-service'
+import ResticClient, { ResticRepository } from './restic-client'
+import { NetworkLimit } from './application'
+import FnScheduler, { Schedule } from 'js-libs/fn-scheduler'
+import FsWatcher from 'js-libs/fs-watcher'
+import { Logger } from 'js-libs/logger'
+import { HttpRequest } from './http-request'
+import handleHook from './hook-handler'
+import { mapValues, keyBy, last, sortBy } from 'lodash'
 
 export interface Backup {
     name: string
@@ -28,207 +36,222 @@ export interface Backup {
 }
 
 
+export default class BackupService {
+    protected jobsService: JobsService
+    protected repositoriesService: RepositoriesService
+    protected resticClient: ResticClient
+    protected backups: Backup[]
+    protected networkLimit: NetworkLimit
+    protected schedulers: FnScheduler[] = []
+    protected watchers: FsWatcher[]
+    protected logger: Logger
+    protected device: string
 
-//     public backup(backupName: string, trigger:'scheduler' | 'fswatcher' | 'api', priority?: string) {
-//         const backup = this.config.backups[backupName]
+    constructor(
+        {jobsService, resticClient, backups, networkLimit, logger, device, repositoriesService}:
+        {jobsService: JobsService, resticClient: ResticClient, backups: Backup[], logger: Logger
+         networkLimit: NetworkLimit, device: string, repositoriesService: RepositoriesService }
+    ) {
+        this.jobsService = jobsService
+        this.repositoriesService = repositoriesService
+        this.resticClient = resticClient
+        this.backups = backups
+        this.networkLimit = networkLimit
+        this.logger = logger
+        this.device = device
 
-//         if (!backup) {
-//             throw new Error('Unknown backup ' + backupName)
-//         }
+        this.schedulers.push(
+            ...this.backups
+                .filter(backup => backup.schedules)
+                .map(backup => new FnScheduler({
+                    id: { operation: 'backup', backup: backup.name },
+                    fn: () => this.backup(backup.name, 'scheduler'),
+                    logger: this.logger,
+                    schedules: backup.schedules!,
+                    runOnStart: true
+                }))
+        )
 
-//         return this.jobsManager.addJob(
-//             new Job({
-//                 logger: this.logger,
-//                 trigger: trigger,
-//                 operation: 'backup',
-//                 subjects: {backup: backupName},
-//                 fn: async (job) => {
-//                     const beforeHook = backup.hooks && backup.hooks.before
-//                     let beforeHookOk = true
+        this.schedulers.push(
+            ...this.backups
+                .filter(backup => backup.prune?.schedules)
+                .map(backup => new FnScheduler({
+                    id: { operation: 'prune', backup: backup.name },
+                    fn: () => this.prune(backup.name, 'scheduler'),
+                    logger: this.logger,
+                    schedules: backup.prune!.schedules!,
+                    runOnStart: true
+                }))
+        )
 
-//                     if (beforeHook) {
-//                         try {
-//                             await this.handleHook(beforeHook, job)
-//                         } catch (e) {
-//                             if (beforeHook.onfailure === 'stop') {
-//                                 throw e
-//                             }
-//                             job.getLogger().warning('beforeHook failed', {error: e})
-//                             if (beforeHook.onfailure !== 'ignore') {
-//                                 beforeHookOk = false
-//                             }
-//                         }
-//                     }
+        this.watchers = this.backups
+            .filter(backup => backup.watch)
+            .map(backup => new FsWatcher({
+                id: { operation: 'backup', backup: backup.name },
+                fn: () => this.backup(backup.name, 'fswatcher'),
+                paths: backup.paths,
+                ignore: backup.excludes,
+                logger: this.logger,
+                waitMin: backup.watch!.wait?.min,
+                waitMax: backup.watch!.wait?.max
+            }))
+    }
 
-//                     let allRepositoryOk = true
+    public async start() {
+        this.schedulers.forEach(fnSch => fnSch.start())
+        this.watchers.forEach(fnSch => fnSch.start())
+    }
 
-//                     for (const repositoryName of backup.repositories) {
-//                         const repository = this.config.repositories[repositoryName]
+    public async stop() {
+        this.schedulers.forEach(fnSch => fnSch.stop())
+        this.watchers.forEach(fnSch => fnSch.stop())
+    }
 
-//                         if (job.getState() === 'aborting') {
-//                             return
-//                         }
+    public getBackups() {
+        return this.backups
+    }
 
-//                         try {
-//                             await this.unlockRepository(repository, job)
+    public getBackup(name: string) {
+        const backup = this.backups.find(backup => backup.name === name)
 
-//                             const resticCall = this.restic.call(
-//                                 'backup',
-//                                 [
-//                                     '--tag',
-//                                     this.formatTagValue('backup', backup.name),
-//                                     '--tag',
-//                                     this.formatTagValue('job', job.getUuid()),
-//                                     '--host',
-//                                     this.config.hostname,
-//                                     ...backup.paths,
-//                                     ...backup.excludes ? backup.excludes.map(exclude => '--exclude=' + exclude) : []
-//                                 ],
-//                                 {
-//                                     repository: repository,
-//                                     logger: job.getLogger(),
-//                                     ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
-//                                 }
-//                             )
+        if (!backup) {
+            throw new Error('Unknown backup ' + name)
+        }
 
-//                             job.once('abort', () => resticCall.abort())
+        return backup
+    }
 
-//                             await once(resticCall, 'finish')
-//                         } catch (e) {
-//                             job.getLogger().warning('repository backup failed', {repository: repositoryName, error: e})
-//                             allRepositoryOk = false
-//                         }
-//                     }
+    public backup(backupName: string, trigger: 'scheduler' | 'fswatcher' | 'api', priority?: JobPriority) {
+        const backup = this.getBackup(backupName)
 
-//                     if (!beforeHookOk || !allRepositoryOk) {
-//                         throw new Error('Hook or repository backup failed')
-//                     }
-//                 },
-//                 priority: priority || backup.priority
-//             })
-//         )
-//     }
+        this.jobsService.run({
+            priority: priority || backup.priority,
+            id: {
+                trigger,
+                operation: 'backup',
+                subjects: { backup: backup.name }
+            },
+            logger: this.logger,
+            fn: async ({abortSignal, logger, job}) => {
 
-//     public prune(backupName: string, trigger:'scheduler' | 'api', priority?: string) {
-//         const backup = this.config.backups[backupName]
+                const repositories = backup.repositories.map(name => this.repositoriesService.getRepository(name))
+                const beforeHookOk = (async () => {
+                    if (backup.hooks?.before) {
+                        try {
+                            await handleHook(backup.hooks.before, abortSignal, logger)
+                            return true
+                        } catch (e) {
+                            switch (backup.hooks.before.onfailure) {
+                                case 'stop':
+                                    throw e
+                                case 'ignore':
+                                    logger.info('Before Hook failed, ignoring', {error: e})
+                                    return true
+                                case 'continue':
+                                default:
+                                    logger.warning('Before Hook failed, continue but job will be fails', {error: e})
+                                    return false
+                            }
+                        }
+                    }
+                })()
 
-//         if (!backup) {
-//             throw new Error('Unknown backup ' + backupName)
-//         }
+                let allRepositoryOk = true
 
-//         if (!backup.prune || !backup.prune.retentionPolicy) {
-//             throw new Error('No prune policy')
-//         }
+                for (const repository of repositories) {
+                    try {
+                        await this.resticClient.backup({
+                            logger,
+                            abortSignal,
+                            repository,
+                            networkLimit: this.networkLimit,
+                            paths: backup.paths,
+                            excludes: backup.excludes,
+                            hostname: this.device,
+                            tags: {
+                                backup: backup.name,
+                                job: job.getUuid()
+                            }
+                        })
+                    } catch (e) {
+                        allRepositoryOk = false
+                        logger.warning('Repository backup failed, job will be failed', {repository: repository.name, error: e})
+                    }
+                }
 
-//         return this.jobsManager.addJob(
-//             new Job({
-//                 logger: this.logger,
-//                 trigger: trigger,
-//                 operation: 'prune',
-//                 subjects: {backup: backupName},
-//                 fn: async (job) => {
-//                     let allRepositoryOk = true
+                if (!beforeHookOk || !allRepositoryOk) {
+                    throw new Error('One hook or repository backup failed')
+                }
+            }
+        })
+    }
 
-//                     for (const repositoryName of backup.repositories) {
-//                         const repository = this.config.repositories[repositoryName]
+    public prune(backupName: string, trigger: 'scheduler' | 'api', priority?: JobPriority) {
+        const backup = this.getBackup(backupName)
 
-//                         if (job.getState() === 'aborting') {
-//                             return
-//                         }
+        if (!backup.prune?.retentionPolicy) {
+            throw new Error('No prune policy for backup ' + backupName)
+        }
 
-//                         try {
-//                             await this.unlockRepository(repository, job)
+        this.jobsService.run({
+            priority: priority || backup.priority,
+            id: {
+                trigger,
+                operation: 'prune',
+                subjects: { backup: backup.name }
+            },
+            logger: this.logger,
+            fn: async ({abortSignal, logger}) => {
+                const repositories = backup.repositories.map(name => this.repositoriesService.getRepository(name))
+                let allRepositoryOk = true
 
-//                             const retentionPolicyMapping: Record<string, string> = {
-//                                 'nbOfHourly': 'hourly',
-//                                 'nbOfdaily': 'daily',
-//                                 'nbOfWeekly': 'weekly',
-//                                 'nbOfMonthly': 'monthly',
-//                                 'nbOfYearly': 'yearly',
-//                                 'minTime': 'within'
-//                             }
+                for (const repository of repositories) {
+                    try {
+                        await this.resticClient.forgetAndPrune({
+                            logger,
+                            abortSignal,
+                            repository,
+                            networkLimit: this.networkLimit,
+                            hostname: this.device,
+                            tags: {
+                                backup: backup.name,
+                            },
+                            policy: backup.prune!.retentionPolicy
+                        })
+                    } catch (e) {
+                        allRepositoryOk = false
+                        logger.warning('Repository prune failed, job will be failed', {repository: repository.name, error: e})
+                    }
+                }
 
-//                             const retentionPolicyArgs: string[] = _.flatten(_.map(backup.prune!.retentionPolicy, (retentionValue, retentionKey) => {
-//                                 if (!retentionPolicyMapping[retentionKey]) {
-//                                     throw new Error('Unknown policy rule ' + retentionKey)
-//                                 }
+                if (!allRepositoryOk) {
+                    throw new Error('One repository prune failed')
+                }
+            }
+        })
+    }
 
-//                                 return ['--keep-' + retentionPolicyMapping[retentionKey], retentionValue!.toString()]
-//                             })) as string[]
+    public getSummary() {
+        return mapValues(keyBy(this.backups, 'name'), backup => {
+            const backupJobs = this.jobsService.findJobs({ operation: 'backup', someSubjects: { backup: backup.name } }, true)
+            const pruneJobs = this.jobsService.findJobs({ operation: 'prune', someSubjects: { backup: backup.name } }, true)
 
-//                             const resticCall = this.restic.call(
-//                                 'forget',
-//                                 [
-//                                     '--prune',
-//                                     '--tag',
-//                                     this.formatTagValue('backup', backup.name),
-//                                     '--host',
-//                                     this.config.hostname
-//                                 ].concat(retentionPolicyArgs),
-//                                 {
-//                                     repository: repository,
-//                                     logger: job.getLogger(),
-//                                     ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
-//                                 }
-//                             )
-
-//                             job.once('abort', () => resticCall.abort())
-
-//                             await once(resticCall, 'finish')
-//                         } catch (e) {
-//                             job.getLogger().warning('repository prune failed', {repository: repositoryName, error: e})
-//                             allRepositoryOk = false
-//                         }
-//                     }
-
-//                     if (!allRepositoryOk) {
-//                         throw new Error('Repository prune failed')
-//                     }
-//                 },
-//                 priority: priority || backup.prune.priority
-//             })
-//         )
-//     }
-
-//         Object.values(this.config.backups)
-//         .forEach((backup) => {
-//             if (backup.schedules) {
-//                 this.fnSchedulers.push(
-//                     new FnScheduler(
-//                         { operation: 'backup', backup: backup.name },
-//                         () => this.backup(backup.name, 'scheduler'),
-//                         this.logger,
-//                         backup.schedules,
-//                         true
-//                     )
-//                 )
-//             }
-
-//             if (backup.watch) {
-//                 this.fsWatchers.push(
-//                     new FsWatcher(
-//                         () => this.backup(backup.name, 'fswatcher'),
-//                         this.logger,
-//                         backup.paths,
-//                         backup.excludes,
-//                         backup.watch.wait && backup.watch.wait.min,
-//                         backup.watch.wait && backup.watch.wait.max,
-//                     )
-//                 )
-//             }
-
-//             if (backup.prune && backup.prune.schedules) {
-//                 this.fnSchedulers.push(
-//                     new FnScheduler(
-//                         { operation: 'prune', backup: backup.name },
-//                         () => this.prune(backup.name, 'scheduler'),
-//                         this.logger,
-//                         backup.prune.schedules,
-//                         true
-//                     )
-//                 )
-//             }
-
-//         })
-
-//     }
+            return {
+                backup: {
+                    lastEndedJob: last(sortBy(backupJobs.ended, job => job.getEndedAt())),
+                    runningJob: last(backupJobs.running),
+                    queuingJob: last(backupJobs.ready),
+                    nextSchedule: this.schedulers
+                        .find(scheduler => scheduler.getId().operation === 'backup' && scheduler.getId().backup === backup.name)
+                },
+                prune: {
+                    lastEndedJob: last(sortBy(pruneJobs.ended, job => job.getEndedAt())),
+                    runningJob: last(pruneJobs.running),
+                    queuingJob: last(pruneJobs.ready),
+                    nextSchedule: this.schedulers
+                        .find(scheduler => scheduler.getId().operation === 'prune' && scheduler.getId().backup === backup.name)
+                }
+            }
+        })
+    }
+}

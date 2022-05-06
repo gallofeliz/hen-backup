@@ -49,7 +49,7 @@ export interface ResticForgetPolicy {
     minTime?: Duration
 }
 
-export default class ResticOperator {
+export default class ResticClient {
     public async initRepository(opts: ResticOpts) {
         await this.runRestic({
             cmd: 'init',
@@ -67,7 +67,7 @@ export default class ResticOperator {
         })
 
         snapshots.forEach((snapshot) => {
-            snapshot.tags = this.tagsArrayToRecord(snapshot.tags)
+            snapshot.tags = this.tagsArrayToRecord(snapshot.tags as any as ResticListTags) // todo fix
         })
 
         return snapshots

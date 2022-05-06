@@ -6,7 +6,7 @@ import createLogger from 'js-libs/logger'
 import Api from './api'
 import ResticClient from './restic-client'
 import RepositoriesService, { Repository, SizeStatFetch, BillingStatFetch } from './repositories-service'
-import { Backup } from './backup-service'
+import BackupService, { Backup } from './backup-service'
 import JobsService from './jobs-service'
 import { ResticNetworkLimit } from './restic-client'
 import { LogLevel } from 'js-libs/logger'
@@ -54,13 +54,13 @@ export default class Application {
     protected fnSchedulers: FnScheduler[] = []
     protected fsWatchers: FsWatcher[] = []
     protected repositoriesService: RepositoriesService
+    protected backupService: BackupService
     protected jobsService: JobsService
 
     constructor(config: AppConfig) {
         this.config = config
         this.logger = createLogger(config.log.level)
         this.logger.info('App Initialization with config', { config })
-        this.api = new Api({config: config.api, logger: this.logger, device: this.config.device})
 
         this.jobsService = new JobsService({
             jobsRunner: new JobsRunner({logger: this.logger, concurrency: 1}),
@@ -77,6 +77,24 @@ export default class Application {
             networkLimit: this.config,
             logger: this.logger
         })
+
+        this.backupService = new BackupService({
+            device: this.config.device,
+            jobsService: this.jobsService,
+            resticClient: resticClient,
+            backups: this.config.backups,
+            networkLimit: this.config,
+            logger: this.logger,
+            repositoriesService: this.repositoriesService
+        })
+
+        this.api = new Api({
+            config: config.api,
+            logger: this.logger,
+            device: this.config.device,
+            repositoriesService: this.repositoriesService,
+            backupService: this.backupService
+        })
     }
 
     async start() {
@@ -90,6 +108,7 @@ export default class Application {
         await this.api.start()
         await this.jobsService.start()
         await this.repositoriesService.start()
+        await this.backupService.start()
     }
 
     async stop() {
@@ -101,6 +120,7 @@ export default class Application {
 
         await this.api.stop()
         await this.repositoriesService.stop()
+        await this.backupService.stop()
         await this.jobsService.stop()
     }
 }

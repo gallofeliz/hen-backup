@@ -3,7 +3,8 @@ import ResticClient, { ResticRepository } from './restic-client'
 import { NetworkLimit } from './application'
 import FnScheduler, { Schedule } from 'js-libs/fn-scheduler'
 import { Logger } from 'js-libs/logger'
-import { HttpRequest } from './http-requester'
+import { HttpRequest } from './http-request'
+import { mapValues, keyBy, last, sortBy } from 'lodash'
 
 interface BaseStat {
     shareName?: string
@@ -41,7 +42,7 @@ export default class RepositoriesService {
     protected resticClient: ResticClient
     protected repositories: Repository[]
     protected networkLimit: NetworkLimit
-    protected checkSchedulers: FnScheduler[]
+    protected schedulers: FnScheduler[]
     protected logger: Logger
 
     constructor(
@@ -54,10 +55,10 @@ export default class RepositoriesService {
         this.networkLimit = networkLimit
         this.logger = logger
 
-        this.checkSchedulers = this.repositories
+        this.schedulers = this.repositories
             .filter((repository) => repository.check?.schedules)
             .map((repository) => new FnScheduler({
-                id: { repository: repository.name },
+                id: { operation: 'checkRepository', repository: repository.name },
                 fn: () => this.checkRepository(repository.name, 'scheduler'),
                 logger: this.logger,
                 schedules: repository.check!.schedules!,
@@ -67,15 +68,25 @@ export default class RepositoriesService {
 
     public async start() {
         await this.initRepositories()
-        this.checkSchedulers.forEach(fnSch => fnSch.start())
+        this.schedulers.forEach(fnSch => fnSch.start())
     }
 
     public async stop() {
-        this.checkSchedulers.forEach(fnSch => fnSch.stop())
+        this.schedulers.forEach(fnSch => fnSch.stop())
     }
 
     public getRepositories() {
         return this.repositories
+    }
+
+    public getRepository(name: string) {
+        const repository = this.repositories.find((repo) => repo.name === name)
+
+        if (!repository) {
+            throw new Error('Unknown repository ' + name)
+        }
+
+        return repository
     }
 
     protected async initRepositories() {
@@ -106,11 +117,7 @@ export default class RepositoriesService {
     }
 
     public checkRepository(repositoryName: string, trigger: 'scheduler' | 'api', priority?: JobPriority) {
-        const repository = this.repositories.find((repo) => repo.name === repositoryName)
-
-        if (!repository) {
-            throw new Error('Unknown repository ' + repositoryName)
-        }
+        const repository = this.getRepository(repositoryName)
 
         this.jobsService.run({
             priority: priority || repository.check?.priority,
@@ -131,7 +138,22 @@ export default class RepositoriesService {
         })
     }
 
+    public getSummary() {
+        return mapValues(keyBy(this.repositories, 'name'), repository => {
+            const jobs = this.jobsService.findJobs({ operation: 'checkRepository', someSubjects: { repository: repository.name } }, true)
 
+            return {
+                checkRepository: {
+                    lastEndedJob: last(sortBy(jobs.ended, job => job.getEndedAt())),
+                    runningJob: last(jobs.running),
+                    queuingJob: last(jobs.ready),
+                    nextSchedule: this.schedulers
+                        .find(scheduler => scheduler.getId().operation === 'checkRepository' && scheduler.getId().repository === repository.name)
+                }
+            }
+        })
+    }
+}
 //     public async getRepositoriesStats() {
 //         const sharedResolutions: any = {
 //             size: {},
@@ -204,86 +226,3 @@ export default class RepositoriesService {
 //             }}
 //         }, {})
 //     }
-
-
-}
-
-//     public async getSummary() {
-
-    // By resource type (repository, backup) instead ? Delegate to others services ?
-
-//         const jobs: Record<string, any>= this.jobsManager.getJobs()
-
-//         function findBackupJob(jobs: Job[], backupName: string) {
-//             return jobs.find((job: Job) => job.getOperation() === 'backup' && job.getSubjects().backup === backupName) || null
-//         }
-
-//         function findBackupScheduler(schedulers: FnScheduler[], backupName: string) {
-//             return schedulers.find(fnScheduler => fnScheduler.getId().operation === 'backup' && fnScheduler.getId().backup === backupName) || null
-//         }
-
-//         function findPruneJob(jobs: Job[], backupName: string) {
-//             return jobs.find((job: Job) => job.getOperation() === 'prune' && job.getSubjects().backup === backupName) || null
-//         }
-
-//         function findPruneScheduler(schedulers: FnScheduler[], backupName: string) {
-//             return schedulers.find(fnScheduler => fnScheduler.getId().operation === 'prune' && fnScheduler.getId().backup === backupName) || null
-//         }
-
-//         function findCheckJob(jobs: Job[], repositoryName: string) {
-//             return jobs.find((job: Job) => job.getOperation() === 'check' && job.getSubjects().repository === repositoryName) || null
-//         }
-
-//         function findCheckScheduler(schedulers: FnScheduler[], repositoryName: string) {
-//             return schedulers.find(fnScheduler => fnScheduler.getId().operation === 'check' && fnScheduler.getId().repository === repositoryName) || null
-//         }
-
-//         return {
-//             backups: await asyncReduce(Object.keys(this.config.backups), async (backupsStatus, backupName) => {
-//                 const lastJob = findBackupJob(jobs.archived, backupName)
-//                 const running = findBackupJob(jobs.running, backupName)
-//                 const queuedJob = findBackupJob(jobs.queue, backupName)
-//                 const scheduler = findBackupScheduler(this.fnSchedulers, backupName)
-
-//                 return {...backupsStatus, ...{
-//                     [backupName]: {
-//                         lastArchivedJob: lastJob && await lastJob.toJson(),
-//                         runningJob: running && await running.toJson(),
-//                         queueJob: queuedJob && await queuedJob.toJson(),
-//                         nextSchedule: scheduler && scheduler.getNextScheduledDate()
-//                     }
-//                 }}
-//             }, {}),
-//             checks: await asyncReduce(Object.keys(this.config.repositories), async (checksStatus, repositoryName) => {
-//                 const lastJob = findCheckJob(jobs.archived, repositoryName)
-//                 const running = findCheckJob(jobs.running, repositoryName)
-//                 const queuedJob = findCheckJob(jobs.queue, repositoryName)
-//                 const scheduler = findCheckScheduler(this.fnSchedulers, repositoryName)
-
-//                 return {...checksStatus, ...{
-//                     [repositoryName]: {
-//                         lastArchivedJob: lastJob && await lastJob.toJson(),
-//                         runningJob: running && await running.toJson(),
-//                         queueJob: queuedJob && await queuedJob.toJson(),
-//                         nextSchedule: scheduler && scheduler.getNextScheduledDate()
-//                     }
-//                 }}
-//             }, {}),
-//             prunes: await asyncReduce(Object.keys(this.config.backups), async (prunesStatus, backupName) => {
-//                 const lastJob = findPruneJob(jobs.archived, backupName)
-//                 const running = findPruneJob(jobs.running, backupName)
-//                 const queuedJob = findPruneJob(jobs.queue, backupName)
-//                 const scheduler = findPruneScheduler(this.fnSchedulers, backupName)
-
-//                 return {...prunesStatus, ...{
-//                     [backupName]: {
-//                         lastArchivedJob: lastJob && await lastJob.toJson(),
-//                         runningJob: running && await running.toJson(),
-//                         queueJob: queuedJob && await queuedJob.toJson(),
-//                         nextSchedule: scheduler && scheduler.getNextScheduledDate()
-//                     }
-//                 }}
-//             }, {})
-//         }
-//     }
-
