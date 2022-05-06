@@ -3,6 +3,9 @@ import { Logger } from 'js-libs/logger'
 import Application from './application'
 import { mapValues, pick } from 'lodash'
 import RepositoriesService from './repositories-service'
+import BackupService from './backup-service'
+import SnapshotsService from './snapshots-service'
+import JobsService, { Job } from './jobs-service'
 
 /** @type integer */
 type integer = number
@@ -15,10 +18,25 @@ export interface ApiConfig {
     }>
 }
 
+function jobToJson(job: Job<any>) {
+    return {
+        uuid: job.getUuid(),
+        createdAt: job.getCreatedAt(),
+        startedAt: job.getStartedAt(),
+        endedAt: job.getEndedAt(),
+        state: job.getState(),
+        priority: job.getPriority(),
+        id: job.getId(),
+        warnings: job.getWarnings(),
+        error: job.getState() === 'failed' && job.getError().toString()
+    }
+}
+
 export default class Api extends HttpServer {
     constructor(
-        {config, logger, device, repositoriesService, backupService}:
-        {config: ApiConfig, logger: Logger, device: string, repositoriesService: RepositoriesService, backupService: BackupService }
+        {config, logger, device, repositoriesService, backupService, snapshotsService, jobsService}:
+        {config: ApiConfig, logger: Logger, device: string, repositoriesService: RepositoriesService,
+         backupService: BackupService, snapshotsService: SnapshotsService, jobsService: JobsService }
     ) {
         super({
             port: config.port,
@@ -38,6 +56,26 @@ export default class Api extends HttpServer {
                                 device,
                                 repositories: repositoriesService.getRepositories().map(repo => pick(repo, 'name')),
                                 backups: backupService.getBackups().map(backup => pick(backup, 'name', 'repositories'))
+                            })
+                        }
+                    },
+                    {
+                        method: 'get',
+                        path: '/jobs',
+                        async handler(req, res) {
+                            res.send(mapValues(
+                                await jobsService.getJobs(true),
+                                jobs => jobs.map(jobToJson)
+                            ))
+                        }
+                    },
+                    {
+                        method: 'get',
+                        path: '/summary',
+                        async handler(req, res) {
+                            res.send({
+                                repositories: repositoriesService.getSummary(),
+                                backups: backupService.getSummary()
                             })
                         }
                     }
@@ -65,14 +103,6 @@ export default class Api extends HttpServer {
         // apiRouter.post('/backups/:backup/prune', (req, res) => {
         //     daemon.prune(req.params.backup, 'api', req.query.priority as string | undefined)
         //     res.end()
-        // })
-
-        // apiRouter.get('/jobs', async (req, res) => {
-        //     res.send(await daemon.getJobs())
-        // })
-
-        // apiRouter.get('/summary', async (req, res) => {
-        //     res.send(await daemon.getSummary())
         // })
 
         // apiRouter.get('/jobs/:job', async (req, res, next) => {
@@ -153,27 +183,3 @@ export default class Api extends HttpServer {
         })
     }
 }
-
-/*
-Jobs summary
-
-    public async getSummary({withRunLogs = false, withSuccessResult = false, withWarnings = false} = {}) {
-        return {
-            uuid: this.getUuid(),
-            createdAt: this.getCreatedAt(),
-            startedAt: this.getStartedAt(),
-            endedAt: this.getEndedAt(),
-            state: this.getState(),
-            priority: this.getPriority(),
-            trigger: this.getTrigger(),
-            operation: this.getOperation(),
-            subjects: this.getSubjects(),
-            warnings: withWarnings ? this.warnings : this.warnings.length,
-            ...this.getState() === 'failure' && { error: await (this.getResult().catch(e => e.toString())) },
-            ...this.getState() === 'success' && withSuccessResult && { result: await this.getResult() },
-            ...withRunLogs && { runLogs: this.getRunLogs() }
-        }
-    }
-
-
-*/

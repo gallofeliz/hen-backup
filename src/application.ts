@@ -7,6 +7,7 @@ import Api from './api'
 import ResticClient from './restic-client'
 import RepositoriesService, { Repository, SizeStatFetch, BillingStatFetch } from './repositories-service'
 import BackupService, { Backup } from './backup-service'
+import SnapshotsService from './snapshots-service'
 import JobsService from './jobs-service'
 import { ResticNetworkLimit } from './restic-client'
 import { LogLevel } from 'js-libs/logger'
@@ -21,7 +22,7 @@ export interface LogConfig {
 
 export interface AppConfig {
     device: string
-    uploadLimit?: Size
+    uploadLimit?: Size // Only for automatic processes ? Background processes ?
     downloadLimit?: Size
     log: LogConfig
     api: ApiConfig
@@ -88,12 +89,23 @@ export default class Application {
             repositoriesService: this.repositoriesService
         })
 
+        const snapshotsService = new SnapshotsService({
+            repositoriesService: this.repositoriesService,
+            backupService: this.backupService,
+            jobsService: this.jobsService,
+            logger: this.logger,
+            resticClient: resticClient,
+            networkLimit: this.config
+        })
+
         this.api = new Api({
             config: config.api,
             logger: this.logger,
             device: this.config.device,
             repositoriesService: this.repositoriesService,
-            backupService: this.backupService
+            backupService: this.backupService,
+            snapshotsService,
+            jobsService: this.jobsService
         })
     }
 

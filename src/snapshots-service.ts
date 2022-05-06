@@ -1,3 +1,9 @@
+import RepositoriesService from './repositories-service'
+import BackupService from './backup-service'
+import JobsService from './jobs-service'
+import { Logger } from 'js-libs/logger'
+import ResticClient from './restic-client'
+import { NetworkLimit } from './application'
 
 export interface Snapshot {
     date: Date,
@@ -9,186 +15,157 @@ export interface Snapshot {
     objects?: object[]
 }
 
+export default class SnapshotsService {
+    protected repositoriesService: RepositoriesService
+    protected backupService: BackupService
+    protected jobsService: JobsService
+    protected logger: Logger
+    protected resticClient: ResticClient
+    protected networkLimit: NetworkLimit
 
+    constructor(
+        {repositoriesService, backupService, jobsService, logger, resticClient, networkLimit}:
+        { repositoriesService: RepositoriesService, backupService: BackupService, jobsService: JobsService,
+          logger: Logger, resticClient: ResticClient, networkLimit: NetworkLimit}
+    ) {
+        this.repositoriesService = repositoriesService
+        this.backupService = backupService
+        this.jobsService = jobsService
+        this.logger = logger
+        this.resticClient = resticClient
+        this.networkLimit = networkLimit
+    }
 
-//     public listSnapshots(criterias: {backupName?: string, repositoryName?: string}, trigger: 'api') {
-//         if (criterias.backupName && !this.config.backups[criterias.backupName]) {
-//             throw new Error('Unknown backup ' + criterias.backupName)
-//         }
+    public async listSnapshots(
+        {device, backupName, repositoryName}: {device?: string, backupName?: string, repositoryName?: string},
+        trigger: 'api'
+    ): Promise<Snapshot[]> {
+        const repositories = (() => {
+            if (repositoryName) {
+                return [this.repositoriesService.getRepository(repositoryName)]
+            }
 
-//         if (criterias.repositoryName && !this.config.repositories[criterias.repositoryName]) {
-//             throw new Error('Unknown repository ' + criterias.repositoryName)
-//         }
+            if (backupName) {
+                return this.backupService.getBackup(backupName).repositories
+                    .map(repositoryName => this.repositoriesService.getRepository(repositoryName))
+            }
 
-//         return this.jobsManager.addJob(
-//             new Job({
-//                 logger: this.logger,
-//                 trigger: trigger,
-//                 operation: 'listSnapshots',
-//                 subjects: {
-//                     ...criterias.backupName && {backup: criterias.backupName},
-//                     ...criterias.repositoryName && {repository: criterias.repositoryName}
-//                 },
-//                 fn: async (job) => {
-//                     const args = ['--host', this.config.hostname]
+            return this.repositoriesService.getRepositories()
+        })()
 
-//                     if (criterias.backupName) {
-//                         args.push('--tag', 'backup-' + criterias.backupName)
-//                     }
+        return this.jobsService.run({
+            priority: 'immediate',
+            id: {
+                trigger,
+                operation: 'listSnapshots',
+                subjects: {
+                    ...device && {device},
+                    ...backupName && {backup: backupName},
+                    ...repositoryName && {repository: repositoryName}
+                }
+            },
+            logger: this.logger,
+            fn: async ({abortSignal, logger}) => {
+                const snapshots = []
 
-//                     let searchRepositories: string[]
+                for (const repository of repositories) {
+                    const resticSnapshots = await this.resticClient.listSnapshots({
+                        logger,
+                        abortSignal,
+                        repository,
+                        networkLimit: this.networkLimit,
+                        hostname: device,
+                        tags: {
+                            ...backupName && {backup: backupName},
+                        }
+                    })
 
-//                     if (criterias.repositoryName) {
-//                         searchRepositories = [criterias.repositoryName]
-//                     } else if (criterias.backupName) {
-//                         searchRepositories = this.config.backups[criterias.backupName].repositories
-//                     } else {
-//                         searchRepositories = Object.keys(this.config.repositories)
-//                     }
+                    snapshots.push(
+                        ...resticSnapshots.map(resticSnapshot => ({
+                            date: new Date(resticSnapshot.time),
+                            device: resticSnapshot.hostname,
+                            backup: resticSnapshot.tags.backup,
+                            job: resticSnapshot.tags.job,
+                            repository: repository.name,
+                            id: resticSnapshot.id
+                        }))
+                    )
+                }
+            }
+        }, true)
+    }
 
-//                     let snapshots: Record<string, any>[] = []
+    public async getSnapshot(repositoryName: string, snapshotId: string, trigger: 'api'): Promise<Snapshot> {
+        const repository = this.repositoriesService.getRepository(repositoryName)
 
-//                     for (const repositoryName of searchRepositories) {
-//                         const repository = this.config.repositories[repositoryName]
+        return this.jobsService.run({
+            priority: 'immediate',
+            id: {
+                trigger,
+                operation: 'getSnapshot',
+                subjects: {
+                    repository: repository.name,
+                    snapshotId
+                }
+            },
+            logger: this.logger,
+            fn: async ({abortSignal, logger}) => {
 
-//                         await this.unlockRepository(repository, job)
+                const resticSnapshot = await this.resticClient.getSnapshot({
+                    logger,
+                    abortSignal,
+                    repository,
+                    networkLimit: this.networkLimit,
+                    snapshotId
+                })
 
-//                         const resticCall = this.restic.call(
-//                             'snapshots',
-//                             args,
-//                             {
-//                                 repository: repository,
-//                                 logger: job.getLogger(),
-//                                 ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
-//                             }
-//                         )
+                return {
+                    date: new Date(resticSnapshot.time),
+                    device: resticSnapshot.hostname,
+                    backup: resticSnapshot.tags.backup,
+                    job: resticSnapshot.tags.job,
+                    repository: repository.name,
+                    id: resticSnapshot.id,
+                    objects: resticSnapshot.objects
+                }
+            }
+        }, true)
+    }
 
-//                         job.once('abort', () => resticCall.abort())
+    public downloadSnapshot(repositoryName: string, snapshotId: string, stream: NodeJS.WritableStream, path: string, format: 'tar' | 'zip', trigger: 'api', priority?: JobPriority) {
+        const repository = this.repositoriesService.getRepository(repositoryName)
 
-//                         const [resticSnapshots]: Array<Record<string, any>[]> = await once(resticCall, 'finish')
-//                         snapshots = snapshots.concat(
-//                             resticSnapshots.map(resticSnapshot => ({
-//                                 date: resticSnapshot['time'],
-//                                 //hostname: resticSnapshot['hostname'],
-//                                 backup: this.extractValueFromTags(resticSnapshot.tags, 'backup'),
-//                                 job: this.extractValueFromTags(resticSnapshot.tags, 'job'),
-//                                 repository: repositoryName,
-//                                 id: resticSnapshot['id']
-//                             }))
-//                         )
-//                     }
+        this.jobsService.run({
+            priority: priority || 'next',
+            id: {
+                trigger,
+                operation: 'downloadSnapshot',
+                subjects: {
+                    repository: repository.name,
+                    snapshotId,
+                    path,
+                    format
+                    // WARNING in case of double, stream will be broken (add option or random subject ?)
+                }
+            },
+            logger: this.logger,
+            fn: async ({abortSignal, logger}) => {
 
-//                     return _.sortBy(snapshots, 'date').reverse()
-//                 },
-//                 priority: 'immediate'
-//             }),
-//             true,
-//             true
-//         )
-//     }
+                await this.resticClient.downloadSnapshot({
+                    logger,
+                    abortSignal,
+                    repository,
+                    networkLimit: this.networkLimit,
+                    snapshotId,
+                    format,
+                    path,
+                    stream
+                })
 
-//     public getSnapshot(repositoryName: string, snapshotId: string, trigger: 'api') {
-//         const repository = this.config.repositories[repositoryName]
-
-//         if (!repository) {
-//             throw new Error('Unknown repository ' + repositoryName)
-//         }
-
-//         return this.jobsManager.addJob(
-//             new Job({
-//                 logger: this.logger,
-//                 trigger: trigger,
-//                 operation: 'getSnapshot',
-//                 subjects: {repository: repositoryName, snapshot: snapshotId},
-//                 fn: async (job) => {
-//                     await this.unlockRepository(repository, job)
-
-//                     const resticCall = this.restic.call(
-//                         'ls',
-//                         [
-//                             '--long',
-//                             snapshotId
-//                         ],
-//                         {
-//                             repository: repository,
-//                             logger: job.getLogger(),
-//                             ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
-//                         }
-//                     )
-
-//                     job.once('abort', () => resticCall.abort())
-
-//                     const [[infos, ...objects]] = await once(resticCall, 'finish')
-
-//                     if (infos.hostname !== this.config.hostname) {
-//                         throw new Error('Unknown snapshot ' + snapshotId)
-//                     }
-
-//                     return {
-//                         repository: repositoryName,
-//                         backup: this.extractValueFromTags(infos.tags, 'backup'),
-//                         job: this.extractValueFromTags(infos.tags, 'job'),
-//                         snapshot: snapshotId,
-//                         objects: objects.map((o: object) => ({permissions: 'unknown', ...o}))
-//                     }
-//                 },
-//                 priority: 'immediate'
-//             }),
-//             true,
-//             true
-//         )
-//     }
-
-//     public downloadSnapshot(
-//         repositoryName: string,
-//         snapshotId: string,
-//         stream: NodeJS.WritableStream,
-//         path: string,
-//         format: 'tar' | 'zip',
-//         trigger: 'api'
-//     ) {
-//         const repository = this.config.repositories[repositoryName]
-
-//         if (!repository) {
-//             throw new Error('Unknown repository ' + repositoryName)
-//         }
-
-//         return this.jobsManager.addJob(
-//             new Job({
-//                 logger: this.logger,
-//                 trigger: trigger,
-//                 operation: 'downloadSnapshot',
-//                 subjects: {repository: repositoryName, snapshot: snapshotId, path},
-//                 fn: async (job) => {
-//                     await this.unlockRepository(repository, job)
-
-//                     const resticCall = this.restic.call(
-//                         'dump',
-//                         [
-//                             '--archive',
-//                             format,
-//                             snapshotId,
-//                             path
-//                         ],
-//                         {
-//                             repository: repository,
-//                             logger: job.getLogger(),
-//                             outputStream: stream,
-//                             ..._.pick(repository, ['uploadLimit', 'downloadLimit'])
-//                         }
-//                     )
-
-//                     job.once('abort', () => resticCall.abort())
-
-//                     await once(resticCall, 'finish')
-//                 },
-//                 priority: 'immediate'
-//             }),
-//             true,
-//             true
-//         )
-//     }
-
+            }
+        })
+    }
+}
 
 //     // def get_path_history(self, repository_name, backup_name, path, priority='immediate'):
 //     //     #sudo RESTIC_REPOSITORY=test/repositories/app2 RESTIC_PASSWORD= restic find --long '/sources/.truc/.machin/super.txt' --json --tag backup-xxx --host host-xxx
