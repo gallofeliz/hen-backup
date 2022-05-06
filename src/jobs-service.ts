@@ -70,7 +70,6 @@ export default class JobsService {
             : this.jobsRunner.run(job, false)
     }
 
-
     public getJobs(byRunState?: true): Record<JobRunState, Job<any>[]>
     public getJobs(byRunState: false): Job<any>[]
 
