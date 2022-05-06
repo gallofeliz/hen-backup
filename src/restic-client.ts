@@ -6,15 +6,18 @@ import { reduce, flatten, map, omitBy, isNil } from 'lodash'
 /** @type integer */
 type integer = number
 
+type ResticListTags = string[]
+type ResticRecordTags = Record<string, string>
+
 export interface ResticSnapshot {
     time: string
     hostname: string
-    tags: string[]
+    tags: ResticRecordTags
     id: string
     objects?: object[]
 }
 
-export interface ResticRepository {
+export interface ResticRepository { // or location { uri, type, params }
     location: string
     password: string
     provider?: {
@@ -34,7 +37,7 @@ export interface ResticOpts {
     repository: ResticRepository
     networkLimit?: ResticNetworkLimit
     hostname?: string
-    tags?: string[]
+    tags?: ResticRecordTags
 }
 
 export interface ResticForgetPolicy {
@@ -57,11 +60,17 @@ export default class ResticOperator {
     public async listSnapshots(opts: ResticOpts): Promise<ResticSnapshot[]> {
         await this.unlockRepository(opts)
 
-        return await this.runRestic({
+        const snapshots: ResticSnapshot[] = await this.runRestic({
             cmd: 'snapshots',
             outputType: 'json',
             ...opts
         })
+
+        snapshots.forEach((snapshot) => {
+            snapshot.tags = this.tagsArrayToRecord(snapshot.tags)
+        })
+
+        return snapshots
     }
 
     public async forgetAndPrune(opts: ResticOpts & { policy: ResticForgetPolicy }) {
@@ -131,6 +140,7 @@ export default class ResticOperator {
 
         return {
             ...infos,
+            tags: this.tagsArrayToRecord(infos.tags),
             objects: objects
         }
     }
@@ -165,14 +175,21 @@ export default class ResticOperator {
             cmdArgs.push('--host', hostname)
         }
 
-        (tags || []).forEach(tag => cmdArgs.push('--tag', tag))
-
-        if (networkLimit?.uploadLimit) {
-            cmdArgs.push('--limit-upload', sizeToKiB(networkLimit.uploadLimit).toString())
+        if (tags) {
+            this.tagsRecordToArray(tags).forEach(tag => cmdArgs.push('--tag', tag))
         }
 
-        if (networkLimit?.downloadLimit) {
-            cmdArgs.push('--limit-download', sizeToKiB(networkLimit.downloadLimit).toString())
+        // Don't apply limits for local disk ...
+        if (networkLimit && repository.location.substr(0, 1) !== '/') {
+
+            if (networkLimit.uploadLimit) {
+                cmdArgs.push('--limit-upload', sizeToKiB(networkLimit.uploadLimit).toString())
+            }
+
+            if (networkLimit.downloadLimit) {
+                cmdArgs.push('--limit-download', sizeToKiB(networkLimit.downloadLimit).toString())
+            }
+
         }
 
         const env = {
@@ -203,5 +220,25 @@ export default class ResticOperator {
 
             return providerEnvs
         }, {})
+    }
+
+    public tagsArrayToRecord(tags: ResticListTags): ResticRecordTags {
+        return reduce(tags, (record, stringifyed) => {
+            const parsed = JSON.parse(stringifyed)
+            return {
+                ...record,
+                [parsed[0]]: parsed[1]
+            }
+        }, {})
+    }
+
+    protected tagsRecordToArray(tags: ResticRecordTags): ResticListTags {
+        return reduce(tags, (list, value, key) => {
+            const stringifyed = JSON.stringify([key, value])
+            return [
+                ...list,
+                stringifyed
+            ]
+        }, [] as ResticListTags)
     }
 }

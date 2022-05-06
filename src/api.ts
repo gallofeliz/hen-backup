@@ -1,8 +1,18 @@
 import HttpServer from 'js-libs/http-server'
-import { ApiConfig } from './definitions'
 import { Logger } from 'js-libs/logger'
 import Application from './application'
 import { mapValues, pick } from 'lodash'
+
+/** @type integer */
+type integer = number
+
+export interface ApiConfig {
+    port: integer
+    users?: Array<{
+        username: string
+        password: string
+    }>
+}
 
 export default class Api extends HttpServer {
     constructor(
@@ -25,6 +35,29 @@ export default class Api extends HttpServer {
     }
 }
 
+/*
+Jobs summary
+
+    public async getSummary({withRunLogs = false, withSuccessResult = false, withWarnings = false} = {}) {
+        return {
+            uuid: this.getUuid(),
+            createdAt: this.getCreatedAt(),
+            startedAt: this.getStartedAt(),
+            endedAt: this.getEndedAt(),
+            state: this.getState(),
+            priority: this.getPriority(),
+            trigger: this.getTrigger(),
+            operation: this.getOperation(),
+            subjects: this.getSubjects(),
+            warnings: withWarnings ? this.warnings : this.warnings.length,
+            ...this.getState() === 'failure' && { error: await (this.getResult().catch(e => e.toString())) },
+            ...this.getState() === 'success' && withSuccessResult && { result: await this.getResult() },
+            ...withRunLogs && { runLogs: this.getRunLogs() }
+        }
+    }
+
+
+*/
 
 
 import { basename } from 'path'

@@ -1,4 +1,4 @@
-hostname: rpi01
+device: rpi01
 
 log:
   level: debug
@@ -81,8 +81,6 @@ backups:
       wait:
         min: 5s
         max: 30s
-    uploadLimit: ~
-    downloadLimit: ~
     priority: superior
     prune:
       schedules:

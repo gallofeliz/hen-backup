@@ -1,5 +1,6 @@
 import { default as jslibsLoadConfig } from 'js-libs/config'
-import { UserProvidedAppConfig, AppConfig, Repository } from './definitions'
+import { UserProvidedAppConfig, AppConfig } from './application'
+import { Repository } from './repositories-service'
 import {hostname} from 'os'
 import { each } from 'lodash'
 const schema = require('./user-provided-app-config-schema.json')
@@ -11,17 +12,17 @@ export default function loadConfig(filename: string): AppConfig {
         envPrefix: 'backuper',
         userProvidedConfigSchema: schema,
         finalizer(userProvidedAppConfig) {
-            const repositories: AppConfig['repositories'] = {}
+            const repositories: AppConfig['repositories'] = []
 
             // Problems with mapValues()
             each(userProvidedAppConfig.repositories, (userProvidedRepository, userProvidedRepositoryName) => {
-                repositories[userProvidedRepositoryName] = {
+                repositories.push({
                     ...userProvidedRepository,
                     name: userProvidedRepositoryName
-                }
+                })
             })
 
-            const backups: AppConfig['backups'] = {}
+            const backups: AppConfig['backups'] = []
 
             // typesript is lost !
             each(userProvidedAppConfig.backups, (userProvidedBackup, userProvidedBackupName) => {
@@ -30,7 +31,7 @@ export default function loadConfig(filename: string): AppConfig {
                 each(userProvidedBackup.repositories, (value, key) => {
                     if (typeof value === 'string') {
                         const repositoryReference: string = value
-                        if (!repositories[repositoryReference]) {
+                        if (!repositories.find(r => r.name === repositoryReference)) {
                             throw new Error(`Missing repository ${repositoryReference} for backup ${userProvidedBackupName}`)
                         }
                         backupsRepositories.push(repositoryReference)
@@ -45,19 +46,19 @@ export default function loadConfig(filename: string): AppConfig {
                         name: (userProvidedRepository as Repository).name || userProvidedRepositoryName
                     }
 
-                    if (repositories[repository.name]) {
+                    if (repositories.find(r => r.name === repository.name)) {
                         throw new Error(`Repository ${repository.name} already exists, for backup ${userProvidedBackupName}`)
                     }
 
-                    repositories[repository.name] = repository
+                    repositories.push(repository)
                     backupsRepositories.push(repository.name)
                 })
 
-                backups[userProvidedBackupName] = {
+                backups.push({
                     name: userProvidedBackupName,
                     ...userProvidedBackup,
                     repositories: backupsRepositories
-                }
+                })
             })
 
             // if (repository.stats) {
