@@ -140,7 +140,7 @@ export default class ResticClient {
 
         return {
             ...infos,
-            tags: this.tagsArrayToRecord(infos.tags),
+            tags: this.tagsArrayToRecord(infos.tags as any), // Todo fix
             objects: objects
         }
     }
@@ -157,7 +157,10 @@ export default class ResticClient {
     protected async unlockRepository(opts: ResticOpts) {
         await this.runRestic({
             cmd: 'unlock',
-            ...opts
+            repository: opts.repository,
+            logger: opts.logger,
+            abortSignal: opts.abortSignal,
+            networkLimit: opts.networkLimit
         })
     }
 
@@ -165,7 +168,7 @@ export default class ResticClient {
         {cmd, args, repository, logger, hostname, abortSignal, outputType, tags, outputStream, networkLimit}:
         ResticOpts & {cmd: string, args?: string[], outputStream?: NodeJS.WritableStream, outputType?: ProcessConfig['outputType']}
     ): Promise<T> {
-        const cmdArgs: string[] = ['--cleanup-cache', ...args || []]
+        const cmdArgs: string[] = [cmd, '--cleanup-cache', ...args || []]
 
         if (outputType === 'json' || outputType === 'multilineJson') {
             cmdArgs.push('--json')
@@ -201,7 +204,7 @@ export default class ResticClient {
         return await runProcess({
             env: {...env, RESTIC_CACHE_DIR: '/var/cache/restic'},
             logger,
-            cmd,
+            cmd: 'restic',
             args: cmdArgs,
             abortSignal,
             outputType,

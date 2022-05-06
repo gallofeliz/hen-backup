@@ -1,6 +1,6 @@
 import RepositoriesService from './repositories-service'
 import BackupService from './backup-service'
-import JobsService from './jobs-service'
+import JobsService, {JobPriority} from './jobs-service'
 import { Logger } from 'js-libs/logger'
 import ResticClient from './restic-client'
 import { NetworkLimit } from './application'
