@@ -1,7 +1,7 @@
 import { Duration } from 'js-libs/utils'
 import { ResticForgetPolicy} from './restic-client'
 import { Hook } from './hook-handler'
-import JobsService, { JobPriority } from './jobs-service'
+import JobsService, { JobPriority, Job } from './jobs-service'
 import RepositoriesService from './repositories-service'
 import ResticClient, { ResticRepository } from './restic-client'
 import { NetworkLimit } from './application'
@@ -35,6 +35,14 @@ export interface Backup {
     }
 }
 
+export interface BackupsSummary {
+    [backupName: string]: Record<'backup' | 'prune', {
+        lastEndedJob: Job<void> | undefined
+        runningJob: Job<void> | undefined
+        queuingJob: Job<void> | undefined
+        nextSchedule: Date | undefined | null
+    }>
+}
 
 export default class BackupService {
     protected jobsService: JobsService
@@ -132,6 +140,10 @@ export default class BackupService {
                 subjects: { backup: backup.name }
             },
             logger: this.logger,
+            // try for backups
+            allocatedTime: '6h',
+            duplicable: true,
+            // ---------------
             fn: async ({abortSignal, logger, job}) => {
 
                 const repositories = backup.repositories.map(name => this.repositoriesService.getRepository(name))
@@ -231,7 +243,7 @@ export default class BackupService {
         })
     }
 
-    public getSummary() {
+    public getSummary(): BackupsSummary {
         return mapValues(keyBy(this.backups, 'name'), backup => {
             const backupJobs = this.jobsService.findJobs({ operation: 'backup', someSubjects: { backup: backup.name } }, true)
             const pruneJobs = this.jobsService.findJobs({ operation: 'prune', someSubjects: { backup: backup.name } }, true)
@@ -240,16 +252,16 @@ export default class BackupService {
                 backup: {
                     lastEndedJob: last(sortBy(backupJobs.ended, job => job.getEndedAt())),
                     runningJob: last(backupJobs.running),
-                    queuingJob: last(backupJobs.ready),
+                    queuingJob: last(backupJobs.queueing),
                     nextSchedule: this.schedulers
-                        .find(scheduler => scheduler.getId().operation === 'backup' && scheduler.getId().backup === backup.name)
+                        .find(scheduler => scheduler.getId().operation === 'backup' && scheduler.getId().backup === backup.name)?.getNextScheduledDate()
                 },
                 prune: {
                     lastEndedJob: last(sortBy(pruneJobs.ended, job => job.getEndedAt())),
                     runningJob: last(pruneJobs.running),
-                    queuingJob: last(pruneJobs.ready),
+                    queuingJob: last(pruneJobs.queueing),
                     nextSchedule: this.schedulers
-                        .find(scheduler => scheduler.getId().operation === 'prune' && scheduler.getId().backup === backup.name)
+                        .find(scheduler => scheduler.getId().operation === 'prune' && scheduler.getId().backup === backup.name)?.getNextScheduledDate()
                 }
             }
         })

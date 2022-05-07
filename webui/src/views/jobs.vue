@@ -1,8 +1,8 @@
 <template>
   <div>
     <div v-if="filteredJobs">
-      <h1>Queue</h1>
-      <b-table striped hover :items="filteredJobs.queue" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
+      <h1>Queueing</h1>
+      <b-table striped hover :items="filteredJobs.queueing" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
           (queuing since {{ row.item.createdAt | formatAgo }})
@@ -28,9 +28,9 @@
 
       </b-table>
       Abort ?
-      <h1>Archive</h1>
+      <h1>Ended</h1>
       Filters here
-      <b-table striped hover :items="filteredJobs.archived" :fields="['uuid', 'createdAt', 'startedAt', 'endedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]">
+      <b-table striped hover :items="filteredJobs.ended" :fields="['uuid', 'createdAt', 'startedAt', 'endedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]">
 
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
@@ -128,9 +128,9 @@ export default {
       }
 
       return this.jobs && {
-        queue: filter(this.jobs.queue),
+        queueing: filter(this.jobs.queueing),
         running: filter(this.jobs.running),
-        archived: filter(this.jobs.archived)
+        ended: filter(this.jobs.ended)
       }
     }
   },

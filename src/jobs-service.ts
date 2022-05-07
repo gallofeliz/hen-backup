@@ -1,4 +1,4 @@
-import { JobsRegistry, JobsRunner, Job as JsLibsJob, JobOpts as JsLibsJobOpts, JobRunState } from 'js-libs/jobs'
+import { JobsRegistry, JobsRunner, Job as JsLibsJob, JobOpts as JsLibsJobOpts, JobPriority } from 'js-libs/jobs'
 export { JobPriority } from 'js-libs/jobs'
 import { Logger } from 'js-libs/logger'
 import { sizeToKiB, durationToSeconds } from 'js-libs/utils'
@@ -13,8 +13,10 @@ export interface JobIdentity {
 export class Job<Result> extends JsLibsJob<JobIdentity, Result> {}
 export type JobOpts = JsLibsJobOpts<JobIdentity>
 
+type JobRunnerState = 'queueing' | 'running' | 'ended'
+
 interface FindCriteria {
-    runState?: JobRunState,
+    runState?: JobRunnerState,
     operation?: string,
     someSubjects?: Record<string, string>
 }
@@ -31,6 +33,7 @@ export default class JobsService {
         this.jobsRegistry = jobsRegistry
         this.jobsRunner = jobsRunner
         this.logger = logger
+
     }
 
     public async start() {
@@ -41,24 +44,30 @@ export default class JobsService {
         await this.jobsRunner.stop()
     }
 
-    public run<Result>(jobOpts: JobOpts, getResult = false) {
-        const jsLibJobOpts: JsLibsJobOpts<JobIdentity> = { priority: 'normal', ...jobOpts }
+    public run<Result>(jobOpts: JobOpts, getResult = false, allowDuplicate = false) {
+        const jsLibJobOpts = { priority: 'normal' as JobPriority, ...jobOpts }
 
-        const equalJob = this.jobsRunner.getQueuingJobs().find(inQueueJob => {
-            return isEqual(
-                pick(inQueueJob.getId(), 'operation', 'subjects'),
-                pick(jobOpts.id, 'operation', 'subjects')
-            )
-        })
+        if (!allowDuplicate) {
+            const equalJob = this.jobsRunner.getQueuingJobs().find(inQueueJob => {
+                return isEqual(
+                    pick(inQueueJob.getId(), 'operation', 'subjects'),
+                    pick(jobOpts.id, 'operation', 'subjects')
+                )
+            })
 
-        if (equalJob) {
-            if (equalJob.getPriority() === jobOpts.priority) {
+            if (equalJob) {
+                this.logger.info('Requested job already in queue : if higher priority, update job in queue ; use it for this request', {
+                    job: equalJob.getUuid()
+                })
+
+                if (Job.isPriorityHigherThan(jsLibJobOpts.priority, equalJob.getPriority())) {
+                    equalJob.prioritize(jsLibJobOpts.priority)
+                }
+
                 return getResult
                     ? equalJob.toPromise()
                     : undefined
             }
-            this.logger.info('Requested job already in queue but with different priority, canceling previous', { id: jobOpts.id })
-            equalJob.cancel()
         }
 
         const job = new Job<Result>(jsLibJobOpts)
@@ -70,20 +79,28 @@ export default class JobsService {
             : this.jobsRunner.run(job, false)
     }
 
-    public getJobs(byRunState?: true): Record<JobRunState, Job<any>[]>
+    public getJobs(byRunState?: true): Record<JobRunnerState, Job<any>[]>
     public getJobs(byRunState: false): Job<any>[]
 
     public getJobs(byRunState = true) {
-        return byRunState
-            ? this.jobsRegistry.getJobsByRunState()
-            : this.jobsRegistry.getJobs()
+        if (!byRunState) {
+            return this.jobsRegistry.getJobs()
+        }
+
+        const jobsByRunState = this.jobsRegistry.getJobsByRunState()
+
+        return {
+            queueing: jobsByRunState.ready,
+            running: jobsByRunState.running,
+            ended: jobsByRunState.ended
+        }
     }
 
     public getJob(uuid: string) {
         return this.jobsRegistry.getJob(uuid)
     }
 
-    public findJobs(criteria: FindCriteria, byRunState?: true): Record<JobRunState, Job<any>[]>
+    public findJobs(criteria: FindCriteria, byRunState?: true): Record<JobRunnerState, Job<any>[]>
     public findJobs(criteria: FindCriteria, byRunState: false): Job<any>[]
 
     public findJobs(

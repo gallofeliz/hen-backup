@@ -227,20 +227,19 @@ export default class ResticClient {
 
     public tagsArrayToRecord(tags: ResticListTags): ResticRecordTags {
         return reduce(tags, (record, stringifyed) => {
-            const parsed = JSON.parse(stringifyed)
+            const [key, ...valueParts] = stringifyed.split('=')
             return {
                 ...record,
-                [parsed[0]]: parsed[1]
+                [key]: valueParts.join('=')
             }
         }, {})
     }
 
     protected tagsRecordToArray(tags: ResticRecordTags): ResticListTags {
         return reduce(tags, (list, value, key) => {
-            const stringifyed = JSON.stringify([key, value])
             return [
                 ...list,
-                stringifyed
+                key + '=' + value
             ]
         }, [] as ResticListTags)
     }

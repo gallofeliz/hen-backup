@@ -64,7 +64,7 @@ export default class Application {
         this.logger.info('App Initialization with config', { config })
 
         this.jobsService = new JobsService({
-            jobsRunner: new JobsRunner({logger: this.logger, concurrency: 1}),
+            jobsRunner: new JobsRunner({logger: this.logger, concurrency: 1, handleAllocatedTimesReaches: true}),
             logger: this.logger,
             jobsRegistry: new JobsRegistry({logger: this.logger, maxNbEnded: 100})
         })

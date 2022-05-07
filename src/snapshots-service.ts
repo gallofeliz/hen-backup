@@ -91,6 +91,8 @@ export default class SnapshotsService {
                         }))
                     )
                 }
+
+                return snapshots
             }
         }, true)
     }
@@ -163,7 +165,7 @@ export default class SnapshotsService {
                 })
 
             }
-        })
+        }, false, true)
     }
 }
 

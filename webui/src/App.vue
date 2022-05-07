@@ -20,7 +20,7 @@
           <b-navbar-nav class="ml-auto">
 
           <b-nav-text right v-if="config">
-            Device {{config.hostname}}
+            Device {{config.device}}
           </b-nav-text>
         </b-navbar-nav>
 

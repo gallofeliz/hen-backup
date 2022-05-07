@@ -2,10 +2,11 @@ import HttpServer from 'js-libs/http-server'
 import { Logger } from 'js-libs/logger'
 import Application from './application'
 import { mapValues, pick } from 'lodash'
-import RepositoriesService from './repositories-service'
-import BackupService from './backup-service'
+import RepositoriesService, { RepositoriesSummary } from './repositories-service'
+import BackupService, { BackupsSummary } from './backup-service'
 import SnapshotsService from './snapshots-service'
 import JobsService, { Job } from './jobs-service'
+import FnScheduler from 'js-libs/fn-scheduler'
 
 /** @type integer */
 type integer = number
@@ -30,6 +31,15 @@ function jobToJson(job: Job<any>) {
         warnings: job.getWarnings(),
         error: job.getState() === 'failed' && job.getError().toString()
     }
+}
+
+function summaryToJson(summary: RepositoriesSummary | BackupsSummary) {
+    return mapValues(summary, operations => mapValues(operations, (values: any) => ({
+        lastEndedJob: values.lastEndedJob ? jobToJson(values.lastEndedJob) : null,
+        runningJob: values.runningJob ? jobToJson(values.runningJob) : null,
+        queuingJob: values.queuingJob ? jobToJson(values.queuingJob) : null,
+        nextSchedule: values.nextSchedule || null
+    })))
 }
 
 export default class Api extends HttpServer {
@@ -74,13 +84,22 @@ export default class Api extends HttpServer {
                         path: '/summary',
                         async handler(req, res) {
                             res.send({
-                                repositories: repositoriesService.getSummary(),
-                                backups: backupService.getSummary()
+                                repositories: summaryToJson(repositoriesService.getSummary()),
+                                backups: summaryToJson(backupService.getSummary())
                             })
                         }
+                    },
+                    {
+                        method: 'get',
+                        path: '/snapshots',
+                        async handler(req, res) {
+                            res.send(await snapshotsService.listSnapshots({
+                                backupName: req.query.backup as string | undefined,
+                                repositoryName: req.query.repository as string | undefined,
+                                device: req.query.device as string | undefined
+                            }, 'api'))
+                        }
                     }
-
-
 
         // apiRouter.get('/stats/repositories', async (req, res, next) => {
         //     try {
@@ -145,16 +164,6 @@ export default class Api extends HttpServer {
         //     }
         // })
 
-        // apiRouter.get('/snapshots', async (req, res, next) => {
-        //     try {
-        //         res.send(await daemon.listSnapshots({
-        //             ...req.query.backup && {backupName: req.query.backup as string},
-        //             ...req.query.repository && {repositoryName: req.query.repository as string},
-        //         }, 'api'))
-        //     } catch (e) {
-        //         next(e)
-        //     }
-        // })
 
         // apiRouter.get('/snapshots/:repository/:snapshot', async (req, res, next) => {
         //     try {

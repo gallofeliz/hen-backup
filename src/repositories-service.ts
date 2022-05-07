@@ -1,4 +1,4 @@
-import JobsService, { JobPriority } from './jobs-service'
+import JobsService, { JobPriority, Job } from './jobs-service'
 import ResticClient, { ResticRepository } from './restic-client'
 import { NetworkLimit } from './application'
 import FnScheduler, { Schedule } from 'js-libs/fn-scheduler'
@@ -35,6 +35,15 @@ export interface Repository extends ResticRepository {
         size?: SizeStatFetch
         billing?: BillingStatFetch
     }
+}
+
+export interface RepositoriesSummary {
+    [repositoryName: string]: Record<'checkRepository', {
+        lastEndedJob: Job<void> | undefined
+        runningJob: Job<void> | undefined
+        queuingJob: Job<void> | undefined
+        nextSchedule: Date | undefined | null
+    }>
 }
 
 export default class RepositoriesService {
@@ -138,7 +147,7 @@ export default class RepositoriesService {
         })
     }
 
-    public getSummary() {
+    public getSummary(): RepositoriesSummary {
         return mapValues(keyBy(this.repositories, 'name'), repository => {
             const jobs = this.jobsService.findJobs({ operation: 'checkRepository', someSubjects: { repository: repository.name } }, true)
 
@@ -146,9 +155,9 @@ export default class RepositoriesService {
                 checkRepository: {
                     lastEndedJob: last(sortBy(jobs.ended, job => job.getEndedAt())),
                     runningJob: last(jobs.running),
-                    queuingJob: last(jobs.ready),
+                    queuingJob: last(jobs.queueing),
                     nextSchedule: this.schedulers
-                        .find(scheduler => scheduler.getId().operation === 'checkRepository' && scheduler.getId().repository === repository.name)
+                        .find(scheduler => scheduler.getId().operation === 'checkRepository' && scheduler.getId().repository === repository.name)?.getNextScheduledDate()
                 }
             }
         })
