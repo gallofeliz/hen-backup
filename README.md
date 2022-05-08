@@ -1,3 +1,5 @@
+A fresh version with extra features (anti freeze jobs, saved jobs, etc) is coming
+
 # Hen-Backup
 
 ![](https://github.com/gallofeliz/hen-backup/blob/03dc82560c826dd5546d087aa4c9f7404897ba01/Capture%20du%202021-11-04%2001-29-57.png)
