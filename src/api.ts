@@ -22,15 +22,8 @@ export interface ApiConfig {
 
 function jobToJson(job: Job<any>) {
     return {
-        uuid: job.getUuid(),
-        createdAt: job.getCreatedAt(),
-        startedAt: job.getStartedAt(),
-        endedAt: job.getEndedAt(),
-        state: job.getState(),
-        priority: job.getPriority(),
-        id: job.getId(),
-        warnings: job.getWarnings(),
-        error: job.getState() === 'failed' && job.getError().toString()
+        ...job.toJSON(),
+        runLogs: undefined
     }
 }
 
@@ -75,7 +68,16 @@ export default class Api extends HttpServer {
                         path: '/jobs',
                         async handler(req, res) {
                             res.send(mapValues(
-                                await jobsService.getJobs(true),
+                                {
+                                    queueing: await jobsService.findQueuingJobs({}),
+                                    running: await jobsService.findRunningJobs({}),
+                                    ended: await jobsService.findEndedJobs(
+                                        {},
+                                        {endedAt: -1},
+                                        req.query.limit ? parseInt(req.query.limit as string) : 20,
+                                        req.query.skip ? parseInt(req.query.skip as string) : 0
+                                    )
+                                },
                                 jobs => jobs.map(jobToJson)
                             ))
                         }
@@ -85,8 +87,8 @@ export default class Api extends HttpServer {
                         path: '/summary',
                         async handler(req, res) {
                             res.send({
-                                repositories: summaryToJson(repositoriesService.getSummary()),
-                                backups: summaryToJson(backupService.getSummary())
+                                repositories: summaryToJson(await repositoriesService.getSummary()),
+                                backups: summaryToJson(await backupService.getSummary())
                             })
                         }
                     },
@@ -105,7 +107,7 @@ export default class Api extends HttpServer {
                         method: 'get',
                         path: '/jobs/:job/realtime-logs',
                         async handler(req, res) {
-                            const job = jobsService.getJob(req.params.job)
+                            const job = await jobsService.getJob(req.params.job)
                             realtimeLogs({job, req, res, fromBeginning: true})
                         }
                     }

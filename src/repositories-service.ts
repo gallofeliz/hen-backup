@@ -4,7 +4,7 @@ import { NetworkLimit } from './application'
 import FnScheduler, { Schedule } from 'js-libs/fn-scheduler'
 import { Logger } from 'js-libs/logger'
 import { HttpRequest } from './http-request'
-import { mapValues, keyBy, last, sortBy } from 'lodash'
+import { zipObject } from 'lodash'
 
 interface BaseStat {
     shareName?: string
@@ -147,20 +147,21 @@ export default class RepositoriesService {
         })
     }
 
-    public getSummary(): RepositoriesSummary {
-        return mapValues(keyBy(this.repositories, 'name'), repository => {
-            const jobs = this.jobsService.findJobs({ operation: 'checkRepository', someSubjects: { repository: repository.name } }, true)
-
-            return {
-                checkRepository: {
-                    lastEndedJob: last(sortBy(jobs.ended, job => job.getEndedAt())),
-                    runningJob: last(jobs.running),
-                    queuingJob: last(jobs.queueing),
-                    nextSchedule: this.schedulers
-                        .find(scheduler => scheduler.getId().operation === 'checkRepository' && scheduler.getId().repository === repository.name)?.getNextScheduledDate()
+    public async getSummary(): Promise<RepositoriesSummary> {
+        return zipObject(
+            this.repositories.map(r => r.name),
+            await Promise.all(this.repositories.map(async repository => {
+                return {
+                    checkRepository: {
+                        lastEndedJob: await this.jobsService.findEndedJob({'id.operation': 'checkRepository', 'id.repository': repository.name}, {endedAt: -1}),
+                        runningJob: await this.jobsService.findRunningJob({'id.operation': 'checkRepository', 'id.repository': repository.name}),
+                        queuingJob: await this.jobsService.findQueuingJob({'id.operation': 'checkRepository', 'id.repository': repository.name}),
+                        nextSchedule: this.schedulers
+                            .find(scheduler => scheduler.getId().operation === 'backup' && scheduler.getId().backup === repository.name)?.getNextScheduledDate()
+                    }
                 }
-            }
-        })
+            }))
+        )
     }
 }
 //     public async getRepositoriesStats() {

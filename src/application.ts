@@ -1,5 +1,5 @@
 import { Logger } from 'js-libs/logger'
-import { JobsRegistry, JobsRunner, NeDBPersisteJobsCollection } from 'js-libs/jobs'
+import { JobsRunner } from 'js-libs/jobs'
 import FnScheduler from 'js-libs/fn-scheduler'
 import FsWatcher from 'js-libs/fs-watcher'
 import createLogger from 'js-libs/logger'
@@ -69,11 +69,7 @@ export default class Application {
         this.jobsService = new JobsService({
             jobsRunner: new JobsRunner({logger: this.logger, concurrency: 1, handleAllocatedTimesReaches: true}),
             logger: this.logger,
-            jobsRegistry: new JobsRegistry({
-                logger: this.logger,
-                maxEndDateDuration: '15d',
-                jobsEndedCollection: new NeDBPersisteJobsCollection(new Datastore({filename: config.jobsDbPath, autoload: true}))
-            })
+            jobsDbPath: config.jobsDbPath
         })
 
         const resticClient = new ResticClient()
