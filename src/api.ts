@@ -7,6 +7,7 @@ import BackupService, { BackupsSummary } from './backup-service'
 import SnapshotsService from './snapshots-service'
 import JobsService, { Job } from './jobs-service'
 import FnScheduler from 'js-libs/fn-scheduler'
+import { realtimeLogs } from 'js-libs/jobs-server-helpers'
 
 /** @type integer */
 type integer = number
@@ -98,6 +99,14 @@ export default class Api extends HttpServer {
                                 repositoryName: req.query.repository as string | undefined,
                                 device: req.query.device as string | undefined
                             }, 'api'))
+                        }
+                    },
+                    {
+                        method: 'get',
+                        path: '/jobs/:job/realtime-logs',
+                        async handler(req, res) {
+                            const job = jobsService.getJob(req.params.job)
+                            realtimeLogs({job, req, res, fromBeginning: true})
                         }
                     }
 

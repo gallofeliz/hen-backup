@@ -77,6 +77,7 @@ export default function loadConfig(filename: string): AppConfig {
             // }
 
             return {
+                jobsDbPath: userProvidedAppConfig.jobsDbPath || '/var/lib/hen-backup/jobs.db',
                 device: userProvidedAppConfig.device || hostname(),
                 log: {
                     level: userProvidedAppConfig.log?.level || 'info'

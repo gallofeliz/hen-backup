@@ -22,11 +22,12 @@ export default class SnapshotsService {
     protected logger: Logger
     protected resticClient: ResticClient
     protected networkLimit: NetworkLimit
+    protected device: string
 
     constructor(
-        {repositoriesService, backupService, jobsService, logger, resticClient, networkLimit}:
+        {repositoriesService, backupService, jobsService, logger, resticClient, networkLimit, device}:
         { repositoriesService: RepositoriesService, backupService: BackupService, jobsService: JobsService,
-          logger: Logger, resticClient: ResticClient, networkLimit: NetworkLimit}
+          logger: Logger, resticClient: ResticClient, networkLimit: NetworkLimit, device: string}
     ) {
         this.repositoriesService = repositoriesService
         this.backupService = backupService
@@ -34,6 +35,7 @@ export default class SnapshotsService {
         this.logger = logger
         this.resticClient = resticClient
         this.networkLimit = networkLimit
+        this.device = device
     }
 
     public async listSnapshots(
@@ -45,7 +47,7 @@ export default class SnapshotsService {
                 return [this.repositoriesService.getRepository(repositoryName)]
             }
 
-            if (backupName) {
+            if (backupName && device === this.device) {
                 return this.backupService.getBackup(backupName).repositories
                     .map(repositoryName => this.repositoriesService.getRepository(repositoryName))
             }

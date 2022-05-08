@@ -147,7 +147,7 @@ export default class BackupService {
             fn: async ({abortSignal, logger, job}) => {
 
                 const repositories = backup.repositories.map(name => this.repositoriesService.getRepository(name))
-                const beforeHookOk = (async () => {
+                const beforeHookOk = await (async () => {
                     if (backup.hooks?.before) {
                         try {
                             await handleHook(backup.hooks.before, abortSignal, logger)
@@ -157,11 +157,11 @@ export default class BackupService {
                                 case 'stop':
                                     throw e
                                 case 'ignore':
-                                    logger.info('Before Hook failed, ignoring', {error: e})
+                                    logger.warning('Before Hook failed, ignoring', {error: e})
                                     return true
                                 case 'continue':
                                 default:
-                                    logger.warning('Before Hook failed, continue but job will be fails', {error: e})
+                                    logger.info('Before Hook failed, continue but job will be fails', {error: e})
                                     return false
                             }
                         }
@@ -187,7 +187,7 @@ export default class BackupService {
                         })
                     } catch (e) {
                         allRepositoryOk = false
-                        logger.warning('Repository backup failed, job will be failed', {repository: repository.name, error: e})
+                        logger.info('Repository backup failed, job will be failed', {repository: repository.name, error: e})
                     }
                 }
 

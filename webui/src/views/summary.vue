@@ -1,5 +1,8 @@
 <template>
   <div>
+
+TODO : Separate repositories and backups, no backups and prune
+
     <div v-if="summary">
       <h1>Backups</h1>
       <div v-for="(backupStatus, backupName) in summary.backups" :key="backupName" class="status-element">

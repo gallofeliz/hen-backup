@@ -1,5 +1,5 @@
 import { Logger } from 'js-libs/logger'
-import { JobsRegistry, JobsRunner } from 'js-libs/jobs'
+import { JobsRegistry, JobsRunner, NeDBPersisteJobsCollection } from 'js-libs/jobs'
 import FnScheduler from 'js-libs/fn-scheduler'
 import FsWatcher from 'js-libs/fs-watcher'
 import createLogger from 'js-libs/logger'
@@ -13,6 +13,7 @@ import { ResticNetworkLimit } from './restic-client'
 import { LogLevel } from 'js-libs/logger'
 import { Size } from 'js-libs/utils'
 import { ApiConfig } from './api'
+import Datastore from 'nedb'
 
 export interface NetworkLimit extends ResticNetworkLimit {}
 
@@ -24,6 +25,7 @@ export interface AppConfig {
     device: string
     uploadLimit?: Size // Only for automatic processes ? Background processes ?
     downloadLimit?: Size
+    jobsDbPath: string
     log: LogConfig
     api: ApiConfig
     repositories: Repository[]
@@ -35,6 +37,7 @@ export interface UserProvidedAppConfig {
     device?: string
     uploadLimit?: Size
     downloadLimit?: Size
+    jobsDbPath?: string
     log?: Partial<LogConfig>
     api?: Partial<ApiConfig>
     repositories?: Record<string, Omit<Repository, 'name'>>
@@ -66,7 +69,11 @@ export default class Application {
         this.jobsService = new JobsService({
             jobsRunner: new JobsRunner({logger: this.logger, concurrency: 1, handleAllocatedTimesReaches: true}),
             logger: this.logger,
-            jobsRegistry: new JobsRegistry({logger: this.logger, maxNbEnded: 100})
+            jobsRegistry: new JobsRegistry({
+                logger: this.logger,
+                maxEndDateDuration: '15d',
+                jobsEndedCollection: new NeDBPersisteJobsCollection(new Datastore({filename: config.jobsDbPath, autoload: true}))
+            })
         })
 
         const resticClient = new ResticClient()
@@ -95,7 +102,8 @@ export default class Application {
             jobsService: this.jobsService,
             logger: this.logger,
             resticClient: resticClient,
-            networkLimit: this.config
+            networkLimit: this.config,
+            device: this.config.device
         })
 
         this.api = new Api({

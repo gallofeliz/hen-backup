@@ -2,15 +2,27 @@
   <div>
     <div v-if="filteredJobs">
       <h1>Queueing</h1>
-      <b-table striped hover :items="filteredJobs.queueing" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
+      <b-table striped hover :items="filteredJobs.queueing" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects']" :sort-by="'createdAt'" :sort-desc="false">
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
           (queuing since {{ row.item.createdAt | formatAgo }})
         </template>
+
+        <template #cell(operation)="row">
+          {{ row.item.id.operation }}
+        </template>
+
+        <template #cell(trigger)="row">
+          {{ row.item.id.trigger }}
+        </template>
+
+        <template #cell(subjects)="row">
+          {{ row.item.id.subjects }}
+        </template>
       </b-table>
       Cancel ? Change priority ?
       <h1>Running</h1>
-      <b-table striped hover :items="filteredJobs.running" :fields="['uuid', 'createdAt', 'startedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]">
+      <b-table striped hover :items="filteredJobs.running" :fields="['uuid', 'createdAt', 'startedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]" :sort-by="'startedAt'" :sort-desc="false">
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
           (queued during {{ row.item.createdAt | formatDuring(row.item.startedAt) }})
@@ -26,11 +38,23 @@
           </b-button>
         </template>
 
+        <template #cell(operation)="row">
+          {{ row.item.id.operation }}
+        </template>
+
+        <template #cell(trigger)="row">
+          {{ row.item.id.trigger }}
+        </template>
+
+        <template #cell(subjects)="row">
+          {{ row.item.id.subjects }}
+        </template>
+
       </b-table>
       Abort ?
       <h1>Ended</h1>
       Filters here
-      <b-table striped hover :items="filteredJobs.ended" :fields="['uuid', 'createdAt', 'startedAt', 'endedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]">
+      <b-table striped hover :items="filteredJobs.ended" :fields="['uuid', 'createdAt', 'startedAt', 'endedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]" :sort-by="'endedAt'" :sort-desc="true">
 
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
@@ -47,9 +71,21 @@
           (ended since {{ row.item.endedAt | formatAgo }})
         </template>
 
+        <template #cell(operation)="row">
+          {{ row.item.id.operation }}
+        </template>
+
+        <template #cell(trigger)="row">
+          {{ row.item.id.trigger }}
+        </template>
+
+        <template #cell(subjects)="row">
+          {{ row.item.id.subjects }}
+        </template>
+
         <template #cell(state)="row">
           <span v-if="row.item.state === 'failure'" v-b-tooltip.hover :title="row.item.error" class="badge badge-danger">{{ row.item.state }}</span>
-          <span v-else>{{ row.item.state }}</span>
+          <span v-else>{{ row.item.state }}</span> + warnings/error
         </template>
 
         <template #cell(actions)="row">

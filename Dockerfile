@@ -1,4 +1,4 @@
-FROM node:alpine3.12 AS webui
+FROM node:16-alpine3.12 AS webui
 
 WORKDIR /build
 ADD webui/package.json webui/package-lock.json ./
@@ -6,8 +6,7 @@ RUN npm i
 ADD webui ./
 RUN npm run build
 
-
-FROM node:alpine3.12 AS core
+FROM node:16-alpine3.12 AS core
 
 WORKDIR /build
 ADD package.json package-lock.json ./
@@ -16,7 +15,7 @@ ADD src tsconfig.json ./
 RUN npm run build
 RUN npm prune --production
 
-FROM node:alpine3.12
+FROM node:16-alpine3.12
 
 RUN apk add --no-cache restic tzdata \
     && restic self-update \
@@ -27,5 +26,7 @@ COPY --from=core /build/dist ./
 COPY --from=core /build/node_modules node_modules
 COPY --from=webui /build/dist webui
 VOLUME /var/cache/restic
+RUN mkdir /var/lib/hen-backup && chown nobody /var/lib/hen-backup
+VOLUME /var/lib/hen-backup
 USER nobody
 CMD node . /etc/backuper/config.yml

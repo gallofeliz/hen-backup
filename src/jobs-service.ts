@@ -45,7 +45,7 @@ export default class JobsService {
     }
 
     public run<Result>(jobOpts: JobOpts, getResult = false, allowDuplicate = false) {
-        const jsLibJobOpts = { priority: 'normal' as JobPriority, ...jobOpts }
+        const jsLibJobOpts = { priority: 'normal' as JobPriority, keepResult: false, ...jobOpts }
 
         if (!allowDuplicate) {
             const equalJob = this.jobsRunner.getQueuingJobs().find(inQueueJob => {
@@ -60,8 +60,8 @@ export default class JobsService {
                     job: equalJob.getUuid()
                 })
 
-                if (Job.isPriorityHigherThan(jsLibJobOpts.priority, equalJob.getPriority())) {
-                    equalJob.prioritize(jsLibJobOpts.priority)
+                if (Job.comparePriority(jsLibJobOpts.priority, equalJob.getPriority()) > 0) {
+                    equalJob.prioritizeTo(jsLibJobOpts.priority)
                 }
 
                 return getResult
@@ -97,7 +97,13 @@ export default class JobsService {
     }
 
     public getJob(uuid: string) {
-        return this.jobsRegistry.getJob(uuid)
+        const job = this.jobsRegistry.getJob(uuid)
+
+        if (!job) {
+            throw new Error('Unknown job ' + uuid)
+        }
+
+        return job
     }
 
     public findJobs(criteria: FindCriteria, byRunState?: true): Record<JobRunnerState, Job<any>[]>
