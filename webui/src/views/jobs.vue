@@ -84,8 +84,9 @@
         </template>
 
         <template #cell(state)="row">
-          <span v-if="row.item.state === 'failure'" v-b-tooltip.hover :title="row.item.error" class="badge badge-danger">{{ row.item.state }}</span>
-          <span v-else>{{ row.item.state }}</span> + warnings/error
+          <span v-if="row.item.state === 'failed'" v-b-tooltip.hover :title="row.item.error" class="badge badge-danger">{{ row.item.state }}</span>
+          <span v-else>{{ row.item.state }} </span>
+          <span v-if="row.item.warnings.length > 0" class="badge badge-warning">{{row.item.warnings.length}} warnings</span>
         </template>
 
         <template #cell(actions)="row">
@@ -189,6 +190,25 @@ export default {
         runLogs: [],
         title: 'Job ' + uuid + ' logs (realtime)'
       }
+
+      // TODO : Fix this shitty code
+        this.$nextTick(() => {
+      this.$nextTick(() => {
+        setTimeout(() => {
+        const modal = this.$refs['my-modal'].getActiveElement()
+        const modalBody = modal && modal.querySelector('.modal-body')
+
+        if (!modalBody) {
+          console.log('pas possible')
+          return
+        }
+          this.$nextTick(() => {
+              modalBody.scrollTop = Number.MAX_SAFE_INTEGER
+          })
+        }, 250)
+
+        })
+      })
 
       const logsListener = this.foregroundClient.getJobRealtimeLogs(uuid)
 

@@ -25,7 +25,7 @@
   </b-form>
 
   <div v-if="results">
-    <b-table striped hover :items="results" :fields="['date', 'backup', 'repository', 'id', { key: 'actions', label: 'Actions' }]" :sort-by="'date'" :sort-desc="true">
+    <b-table striped hover :items="results" :fields="['date', 'backup', 'repository', 'id', 'job',{ key: 'actions', label: 'Actions' }]" :sort-by="'date'" :sort-desc="true">
 
       <template #cell(date)="row">
         {{ row.item.date | formatDate }}

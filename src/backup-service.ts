@@ -232,7 +232,7 @@ export default class BackupService {
                         })
                     } catch (e) {
                         allRepositoryOk = false
-                        logger.warning('Repository prune failed, job will be failed', {repository: repository.name, error: e})
+                        logger.info('Repository prune failed, job will be failed', {repository: repository.name, error: e})
                     }
                 }
 
