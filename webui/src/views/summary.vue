@@ -1,63 +1,89 @@
 <template>
   <div>
-
-TODO : Separate repositories and backups, no backups and prune
-
     <div v-if="summary">
       <h1>Backups</h1>
-      <div v-for="(backupStatus, backupName) in summary.backups" :key="backupName" class="status-element">
+      <div v-for="(operations, backupName) in summary.backups" :key="backupName" class="status-element">
         <b-icon-building class="icon"></b-icon-building>
         {{backupName}}
         <p>
-          Last run :
-          <span v-if="backupStatus.lastArchivedJob">
-            {{ backupStatus.lastArchivedJob.endedAt | formatAgo }},
-            <span :class="{'badge badge-danger': backupStatus.lastArchivedJob.state !== 'success' }" v-b-tooltip.hover :title="backupStatus.lastArchivedJob.error">{{ backupStatus.lastArchivedJob.state }}</span>
+          Last backup :
+          <span v-if="operations.backup.lastEndedJob">
+            {{ operations.backup.lastEndedJob.endedAt | formatAgo }},
+            <span :class="{'badge badge-danger': operations.backup.lastEndedJob.state !== 'done' }" v-b-tooltip.hover :title="operations.backup.lastEndedJob.error">{{ operations.backup.lastEndedJob.state }}</span>
           </span>
           <span v-else>Unknown</span>
           <br />
-          Next run :
-            <span v-if="backupStatus.runningJob">
-              Running since {{ backupStatus.runningJob.startedAt | formatAgo }}
+          Next backup :
+            <span v-if="operations.backup.runningJob">
+              Running since {{ operations.backup.runningJob.startedAt | formatAgo }}
             </span>
-            <span v-else-if="backupStatus.queueJob">
-              Queued since {{ backupStatus.queueJob.createdAt | formatAgo }}
+            <span v-else-if="operations.backup.queuingJob">
+              Queued since {{ operations.backup.queuingJob.createdAt | formatAgo }}
             </span>
-            <span v-else-if="backupStatus.nextSchedule">
-              Scheduled for {{ backupStatus.nextSchedule | formatTo }}
+            <span v-else-if="operations.backup.nextSchedule">
+              Scheduled for {{ operations.backup.nextSchedule | formatTo }}
             </span>
             <span v-else>
               No scheduled
             </span>
         </p>
         <p>
-          <router-link :to="{ name: 'jobs', query: { operation: 'backup', backup: backupName }}" class="mr-2">See history</router-link>
+          <router-link :to="{ name: 'jobs', query: { operation: 'backup', backup: backupName }}" class="mr-2">See backups history</router-link>
 
           <run-button text="Backup" @click="runBackup(backupName, $event)" style="float: right"></run-button>
         </p>
-      </div>
 
-      <h1>Repositories checks</h1>
-      <div v-for="(checkStatus, repositoryName) in summary.checks" :key="repositoryName" class="status-element">
-        <b-icon-server class="icon"></b-icon-server>
-        {{repositoryName}} <span v-if="repositoriesStats[repositoryName] && Object.keys(repositoriesStats[repositoryName]).length > 0">(<span class="repostat" v-if="repositoriesStats[repositoryName].size">{{repositoriesStats[repositoryName].size | formatSize}}</span><span class="repostat" v-if="repositoriesStats[repositoryName].billing">{{repositoriesStats[repositoryName].billing | formatBilling}}</span>)</span>
         <p>
-          Last run :
-          <span v-if="checkStatus.lastArchivedJob">
-            {{ checkStatus.lastArchivedJob.endedAt | formatAgo }},
-            <span :class="{'badge badge-danger': checkStatus.lastArchivedJob.state !== 'success' }" v-b-tooltip.hover :title="checkStatus.lastArchivedJob.error">{{ checkStatus.lastArchivedJob.state }}</span>
+          Last prune :
+          <span v-if="operations.prune.lastEndedJob">
+            {{ operations.prune.lastEndedJob.endedAt | formatAgo }},
+            <span :class="{'badge badge-danger': operations.prune.lastEndedJob.state !== 'done' }" v-b-tooltip.hover :title="operations.prune.lastEndedJob.error">{{ operations.prune.lastEndedJob.state }}</span>
           </span>
           <span v-else>Unknown</span>
           <br />
-          Next run :
-            <span v-if="checkStatus.runningJob">
-              Running since {{ checkStatus.runningJob.startedAt | formatAgo }}
+          Next prune :
+            <span v-if="operations.prune.runningJob">
+              Running since {{ operations.prune.runningJob.startedAt | formatAgo }}
             </span>
-            <span v-else-if="checkStatus.queueJob">
-              Queued since {{ checkStatus.queueJob.createdAt | formatAgo }}
+            <span v-else-if="operations.prune.queueJob">
+              Queued since {{ operations.prune.queueJob.createdAt | formatAgo }}
             </span>
-            <span v-else-if="checkStatus.nextSchedule">
-              Scheduled for {{ checkStatus.nextSchedule | formatTo }}
+            <span v-else-if="operations.prune.nextSchedule">
+              Scheduled for {{ operations.prune.nextSchedule | formatTo }}
+            </span>
+            <span v-else>
+              No scheduled
+            </span>
+        </p>
+
+        <p>
+          <router-link :to="{ name: 'jobs', query: { operation: 'prune', backup: backupName }}" class="mr-2">See prunes history</router-link>
+
+          <run-button text="Prune" @click="runPrune(backupName, $event)" style="float: right"></run-button>
+        </p>
+      </div>
+
+      <h1>Repositories</h1>
+      <div v-for="(operations, repositoryName) in summary.repositories" :key="repositoryName" class="status-element">
+        <b-icon-server class="icon"></b-icon-server>
+        {{repositoryName}} <span v-if="repositoriesStats[repositoryName] && Object.keys(repositoriesStats[repositoryName]).length > 0">(<span class="repostat" v-if="repositoriesStats[repositoryName].size">{{repositoriesStats[repositoryName].size | formatSize}}</span><span class="repostat" v-if="repositoriesStats[repositoryName].billing">{{repositoriesStats[repositoryName].billing | formatBilling}}</span>)</span>
+        <p>
+          Last check :
+          <span v-if="operations.checkRepository.lastEndedJob">
+            {{ operations.checkRepository.lastEndedJob.endedAt | formatAgo }},
+            <span :class="{'badge badge-danger': operations.checkRepository.lastEndedJob.state !== 'done' }" v-b-tooltip.hover :title="operations.checkRepository.lastEndedJob.error">{{ operations.checkRepository.lastEndedJob.state }}</span>
+          </span>
+          <span v-else>Unknown</span>
+          <br />
+          Next check :
+            <span v-if="operations.checkRepository.runningJob">
+              Running since {{ operations.checkRepository.runningJob.startedAt | formatAgo }}
+            </span>
+            <span v-else-if="operations.checkRepository.queueJob">
+              Queued since {{ operations.checkRepository.queueJob.createdAt | formatAgo }}
+            </span>
+            <span v-else-if="operations.checkRepository.nextSchedule">
+              Scheduled for {{ operations.checkRepository.nextSchedule | formatTo }}
             </span>
             <span v-else>
               No scheduled
@@ -70,39 +96,6 @@ TODO : Separate repositories and backups, no backups and prune
         </p>
       </div>
 
-      <h1>Backups prunes</h1>
-      <div v-for="(pruneStatus, backupName) in summary.prunes" :key="backupName" class="status-element">
-        <b-icon-scissors class="icon"></b-icon-scissors>
-        {{backupName}}
-        <p>
-          Last run :
-          <span v-if="pruneStatus.lastArchivedJob">
-            {{ pruneStatus.lastArchivedJob.endedAt | formatAgo }},
-            <span :class="{'badge badge-danger': pruneStatus.lastArchivedJob.state !== 'success' }" v-b-tooltip.hover :title="pruneStatus.lastArchivedJob.error">{{ pruneStatus.lastArchivedJob.state }}</span>
-          </span>
-          <span v-else>Unknown</span>
-          <br />
-          Next run :
-            <span v-if="pruneStatus.runningJob">
-              Running since {{ pruneStatus.runningJob.startedAt | formatAgo }}
-            </span>
-            <span v-else-if="pruneStatus.queueJob">
-              Queued since {{ pruneStatus.queueJob.createdAt | formatAgo }}
-            </span>
-            <span v-else-if="pruneStatus.nextSchedule">
-              Scheduled for {{ pruneStatus.nextSchedule | formatTo }}
-            </span>
-            <span v-else>
-              No scheduled
-            </span>
-        </p>
-        <p>
-          <router-link :to="{ name: 'jobs', query: { operation: 'prune', backup: backupName }}" class="mr-2">See history</router-link>
-
-          <run-button text="Prune" @click="runPrune(backupName, $event)" style="float: right"></run-button>
-
-        </p>
-      </div>
     </div>
   </div>
 </template>
@@ -110,13 +103,13 @@ TODO : Separate repositories and backups, no backups and prune
 <script>
 
 import * as moment from 'moment'
-import { BIconBuilding, BIconScissors, BIconServer } from 'bootstrap-vue'
+import { BIconBuilding, BIconServer } from 'bootstrap-vue'
 import RunButton from '../components/RunButton.vue'
 
 export default {
   inject: ['backgroundClient', 'foregroundClient'],
   components: {
-    BIconBuilding, BIconScissors, BIconServer, RunButton
+    BIconBuilding, BIconServer, RunButton
   },
   props: {
   },

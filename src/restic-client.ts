@@ -90,10 +90,6 @@ export default class ResticClient {
                 throw new Error('Unknown policy rule ' + retentionKey)
             }
 
-            if (retentionKey === 'minTime') {
-                retentionValue = durationToSeconds(retentionValue as string)
-            }
-
             return ['--keep-' + retentionPolicyMapping[retentionKey], retentionValue.toString()]
         })) as string[]
 

@@ -148,15 +148,15 @@ export default {
     filteredJobs() {
       const filter = (jobs) => {
         return jobs.filter(job => {
-          if (this.operation && job.operation !== this.operation) {
+          if (this.operation && job.id.operation !== this.operation) {
             return false
           }
 
-          if (this.repository && (job.subjects || {}).repository !== this.repository) {
+          if (this.repository && (job.id.subjects || {}).repository !== this.repository) {
             return false
           }
 
-          if (this.backup && (job.subjects || {}).backup !== this.backup) {
+          if (this.backup && (job.id.subjects || {}).backup !== this.backup) {
             return false
           }
 

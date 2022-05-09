@@ -153,11 +153,15 @@ export default class RepositoriesService {
             await Promise.all(this.repositories.map(async repository => {
                 return {
                     checkRepository: {
-                        lastEndedJob: await this.jobsService.findEndedJob({'id.operation': 'checkRepository', 'id.repository': repository.name}, {endedAt: -1}),
-                        runningJob: await this.jobsService.findRunningJob({'id.operation': 'checkRepository', 'id.repository': repository.name}),
-                        queuingJob: await this.jobsService.findQueuingJob({'id.operation': 'checkRepository', 'id.repository': repository.name}),
+                        lastEndedJob: await this.jobsService
+                            .findEndedJob({'id.operation': 'checkRepository', 'id.subjects.repository': repository.name}, {endedAt: -1}),
+                        runningJob: await this.jobsService
+                            .findRunningJob({'id.operation': 'checkRepository', 'id.subjects.repository': repository.name}),
+                        queuingJob: await this.jobsService
+                            .findQueuingJob({'id.operation': 'checkRepository', 'id.subjects.repository': repository.name}),
                         nextSchedule: this.schedulers
-                            .find(scheduler => scheduler.getId().operation === 'backup' && scheduler.getId().backup === repository.name)?.getNextScheduledDate()
+                            .find(scheduler => scheduler.getId().operation === 'checkRepository' && scheduler.getId().repository === repository.name)
+                            ?.getNextScheduledDate()
                     }
                 }
             }))

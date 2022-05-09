@@ -249,18 +249,26 @@ export default class BackupService {
             await Promise.all(this.backups.map(async backup => {
                 return {
                     backup: {
-                        lastEndedJob: await this.jobsService.findEndedJob({'id.operation': 'backup', 'id.backup': backup.name}, {endedAt: -1}),
-                        runningJob: await this.jobsService.findRunningJob({'id.operation': 'backup', 'id.backup': backup.name}),
-                        queuingJob: await this.jobsService.findQueuingJob({'id.operation': 'backup', 'id.backup': backup.name}),
+                        lastEndedJob: await this.jobsService
+                            .findEndedJob({'id.operation': 'backup', 'id.subjects.backup': backup.name}, {endedAt: -1}),
+                        runningJob: await this.jobsService
+                            .findRunningJob({'id.operation': 'backup', 'id.subjects.backup': backup.name}),
+                        queuingJob: await this.jobsService
+                            .findQueuingJob({'id.operation': 'backup', 'id.subjects.backup': backup.name}),
                         nextSchedule: this.schedulers
-                            .find(scheduler => scheduler.getId().operation === 'backup' && scheduler.getId().backup === backup.name)?.getNextScheduledDate()
+                            .find(scheduler => scheduler.getId().operation === 'backup' && scheduler.getId().backup === backup.name)
+                            ?.getNextScheduledDate()
                     },
                     prune: {
-                        lastEndedJob: await this.jobsService.findEndedJob({'id.operation': 'prune', 'id.backup': backup.name}, {endedAt: -1}),
-                        runningJob: await this.jobsService.findRunningJob({'id.operation': 'prune', 'id.backup': backup.name}),
-                        queuingJob: await this.jobsService.findQueuingJob({'id.operation': 'prune', 'id.backup': backup.name}),
+                        lastEndedJob: await this.jobsService
+                            .findEndedJob({'id.operation': 'prune', 'id.subjects.backup': backup.name}, {endedAt: -1}),
+                        runningJob: await this.jobsService
+                            .findRunningJob({'id.operation': 'prune', 'id.subjects.backup': backup.name}),
+                        queuingJob: await this.jobsService
+                            .findQueuingJob({'id.operation': 'prune', 'id.subjects.backup': backup.name}),
                         nextSchedule: this.schedulers
-                            .find(scheduler => scheduler.getId().operation === 'prune' && scheduler.getId().backup === backup.name)?.getNextScheduledDate()
+                            .find(scheduler => scheduler.getId().operation === 'prune' && scheduler.getId().backup === backup.name)
+                            ?.getNextScheduledDate()
                     }
                 }
             }))
