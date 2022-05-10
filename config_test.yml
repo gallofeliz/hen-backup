@@ -108,6 +108,7 @@ backups:
     paths:
       - /test
     repositories:
-      app2_dd:
+      - global_dd
+      - name: app2_dd
         location: iua
         password: hello
