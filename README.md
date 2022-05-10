@@ -1,11 +1,9 @@
-A fresh version with extra features (anti freeze jobs, saved jobs, etc) is coming
-
 # Hen-Backup
 
 ![](https://github.com/gallofeliz/hen-backup/blob/03dc82560c826dd5546d087aa4c9f7404897ba01/Capture%20du%202021-11-04%2001-29-57.png)
 
 Hen-Backup is a backup tool designed to be automatic, complete and flexible. Its values are :
-- Automatic (Daemon)
+- Automatic
 - Monitorable (logs are json and written to be collected and produce metrics to have supervision)
 - Encrypted
 - Unlimited backups definitions (define a backup for a database, other for your music, other for your pictures, etc)
@@ -14,8 +12,6 @@ Hen-Backup is a backup tool designed to be automatic, complete and flexible. Its
 - Resources limitation for guys like me that have a slow internet ;) and slow computer
 
 Backup uses Restic for operations. It's like a Restic supervisor !
-
-Notes : The daemon is chrooted on its hostname. Restic is used and able to do everything crazy, but globally for me it's not a very good idea to store every devices in the same repository (yes, it depends of the situation, but what I don't like it's that everybody can see everybody and delete others, especially in case of intrusion). And so, we will not develop a factory to handle external repositories, others hostname, etc. So the idea is to chroot ! If you want to manage other hostname, please call the api of its daemon, or run a daemon (todo add "readonly/recovery" mode) to operate on it.
 
 As Restic is used as tool, the "super" maintenance has to been done directly with Restic.
 
