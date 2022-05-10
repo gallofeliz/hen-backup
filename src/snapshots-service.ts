@@ -139,7 +139,7 @@ export default class SnapshotsService {
     public downloadSnapshot(repositoryName: string, snapshotId: string, stream: NodeJS.WritableStream, path: string, format: 'tar' | 'zip', trigger: 'api', priority?: JobPriority) {
         const repository = this.repositoriesService.getRepository(repositoryName)
 
-        this.jobsService.run({
+        return this.jobsService.run({
             priority: priority || 'next',
             id: {
                 trigger,
@@ -167,7 +167,7 @@ export default class SnapshotsService {
                 })
 
             }
-        }, false, true)
+        }, true, true)
     }
 }
 

@@ -2,7 +2,7 @@ import {
     JobsRunner, Job as JsLibsJob, JobOpts as JsLibsJobOpts, JobPriority, InMemoryJobsCollection,
     FilePersistedJobsCollection, JobsCollectionQuery, JobsCollectionSort
 } from 'js-libs/jobs'
-export { JobPriority } from 'js-libs/jobs'
+export { JobPriority, semanticJobPriorities } from 'js-libs/jobs'
 import { Logger } from 'js-libs/logger'
 import { sizeToKiB, durationToSeconds } from 'js-libs/utils'
 import { isEqual, pick, mapValues } from 'lodash'

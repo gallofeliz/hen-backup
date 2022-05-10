@@ -2,7 +2,6 @@
   <div>
 
     Todo :
-       - Add warnings badges
        - Line danger on links that have 1 or more failed (add "report" on failed errors ?)
 
     <div v-if="summary">
@@ -20,6 +19,7 @@
           <span v-if="operations.backup.lastEndedJob">
             {{ operations.backup.lastEndedJob.endedAt | formatAgo }},
             <span :class="{'badge badge-danger': operations.backup.lastEndedJob.state === 'failed' }" v-b-tooltip.hover :title="operations.backup.lastEndedJob.error">{{ operations.backup.lastEndedJob.state }}</span>
+            <span v-if="operations.backup.lastEndedJob.warnings.length > 0" class="badge badge-warning">{{operations.backup.lastEndedJob.warnings.length}} warnings</span>
           </span>
           <span v-else>Unknown</span>
           <br />
@@ -38,7 +38,7 @@
             </span>
         </p>
         <p>
-          <router-link :to="{ name: 'jobs', query: { operation: 'backup', backup: backupName }}" class="mr-2">See backups history</router-link>
+          <router-link :to="{ name: 'jobs', query: { search: JSON.stringify({ 'id.operation': 'backup', 'id.subjects.backup': backupName })}}" class="mr-2">See backups history</router-link>
 
           <run-button text="Backup" @click="runBackup(backupName, $event)" style="float: right"></run-button>
         </p>
@@ -48,6 +48,7 @@
           <span v-if="operations.prune.lastEndedJob">
             {{ operations.prune.lastEndedJob.endedAt | formatAgo }},
             <span :class="{'badge badge-danger': operations.prune.lastEndedJob.state === 'failed' }" v-b-tooltip.hover :title="operations.prune.lastEndedJob.error">{{ operations.prune.lastEndedJob.state }}</span>
+            <span v-if="operations.prune.lastEndedJob.warnings.length > 0" class="badge badge-warning">{{operations.prune.lastEndedJob.warnings.length}} warnings</span>
           </span>
           <span v-else>Unknown</span>
           <br />
@@ -67,7 +68,7 @@
         </p>
 
         <p>
-          <router-link :to="{ name: 'jobs', query: { operation: 'prune', backup: backupName }}" class="mr-2">See prunes history</router-link>
+          <router-link :to="{ name: 'jobs', query: { search: JSON.stringify({ 'id.operation': 'prune', 'id.subjects.backup': backupName })}}" class="mr-2">See prunes history</router-link>
 
           <run-button text="Prune" @click="runPrune(backupName, $event)" style="float: right"></run-button>
         </p>
@@ -88,6 +89,7 @@
           <span v-if="operations.checkRepository.lastEndedJob">
             {{ operations.checkRepository.lastEndedJob.endedAt | formatAgo }},
             <span :class="{'badge badge-danger': operations.checkRepository.lastEndedJob.state === 'failed' }" v-b-tooltip.hover :title="operations.checkRepository.lastEndedJob.error">{{ operations.checkRepository.lastEndedJob.state }}</span>
+            <span v-if="operations.checkRepository.lastEndedJob.warnings.length > 0" class="badge badge-warning">{{operations.checkRepository.lastEndedJob.warnings.length}} warnings</span>
           </span>
           <span v-else>Unknown</span>
           <br />
@@ -106,7 +108,7 @@
             </span>
         </p>
         <p>
-          <router-link :to="{ name: 'jobs', query: { operation: 'check', repository: repositoryName }}" class="mr-2">See history</router-link>
+          <router-link :to="{ name: 'jobs', query: { search: JSON.stringify({ 'id.operation': 'checkRepository', 'id.subjects.repository': repositoryName })}}" class="mr-2">See history</router-link>
 
           <run-button text="Check" @click="runCheck(repositoryName, $event)" style="float: right"></run-button>
         </p>

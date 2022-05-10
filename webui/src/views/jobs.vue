@@ -120,9 +120,7 @@ import * as moment from 'moment'
 export default {
   inject: ['backgroundClient', 'foregroundClient'],
   props: {
-    operation: String,
-    repository: String,
-    backup: String
+    search: Object
   },
   filters: {
     formatDuring(date1, date2) {
@@ -146,29 +144,7 @@ export default {
   },
   computed: {
     filteredJobs() {
-      const filter = (jobs) => {
-        return jobs.filter(job => {
-          if (this.operation && job.id.operation !== this.operation) {
-            return false
-          }
-
-          if (this.repository && (job.id.subjects || {}).repository !== this.repository) {
-            return false
-          }
-
-          if (this.backup && (job.id.subjects || {}).backup !== this.backup) {
-            return false
-          }
-
-          return true
-        })
-      }
-
-      return this.jobs && {
-        queueing: filter(this.jobs.queueing),
-        running: filter(this.jobs.running),
-        ended: filter(this.jobs.ended)
-      }
+      return this.jobs
     }
   },
   created() {
@@ -180,7 +156,7 @@ export default {
   },
   methods: {
     async retrieveJobs() {
-        this.jobs = await this.backgroundClient.getJobs()
+        this.jobs = await this.backgroundClient.getJobs(this.search || {})
     },
     cancelAutoUpdate() {
         clearInterval(this.timer)

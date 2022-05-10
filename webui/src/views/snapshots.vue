@@ -157,12 +157,12 @@ export default {
         })
     },
     downloadSnapshot(path, format, type) {
-      window.location.href = this.foregroundClient.getDownloadSnapshotUrl(this.explain.repository, this.explain.snapshot, path, format, type)
+      window.location.href = this.foregroundClient.getDownloadSnapshotUrl(this.explain.repository, this.explain.id, path, format, type)
     },
     async showDetails(repository, snapshotId) {
       this.explain = await this.foregroundClient.getSnapshot(repository, snapshotId)
 
-      this.explain.title = `Snapshot ${this.explain.snapshot} of backup ${this.explain.backup} on repository ${this.explain.repository}`
+      this.explain.title = `Snapshot ${this.explain.id} of backup ${this.explain.backup} on repository ${this.explain.repository}`
 
       this.$refs['my-modal'].show()
     },

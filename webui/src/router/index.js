@@ -18,9 +18,7 @@ const routes = [
     name: 'jobs',
     component: Jobs,
     props: route => ({
-      operation: route.query.operation,
-      repository: route.query.repository,
-      backup: route.query.backup
+      search: route.query.search ? JSON.parse(route.query.search) : null
     })
   },
   {
