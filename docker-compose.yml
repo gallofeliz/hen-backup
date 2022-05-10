@@ -9,6 +9,7 @@ services:
       - ./test/sources:/sources:ro
       - ./test/repositories:/repositories
       - ./config_test.yml:/etc/backuper/config.yml:ro
+      - ./test/db:/var/lib/hen-backup
     # env_file:
     #   - .env
     environment:

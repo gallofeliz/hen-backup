@@ -1,16 +1,28 @@
 <template>
   <div>
     <div v-if="filteredJobs">
-      <h1>Queue</h1>
-      <b-table striped hover :items="filteredJobs.queue" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects']">
+      <h1>Queueing</h1>
+      <b-table striped hover :items="filteredJobs.queueing" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects']" :sort-by="'createdAt'" :sort-desc="false">
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
           (queuing since {{ row.item.createdAt | formatAgo }})
         </template>
+
+        <template #cell(operation)="row">
+          {{ row.item.id.operation }}
+        </template>
+
+        <template #cell(trigger)="row">
+          {{ row.item.id.trigger }}
+        </template>
+
+        <template #cell(subjects)="row">
+          {{ row.item.id.subjects }}
+        </template>
       </b-table>
       Cancel ? Change priority ?
       <h1>Running</h1>
-      <b-table striped hover :items="filteredJobs.running" :fields="['uuid', 'createdAt', 'startedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]">
+      <b-table striped hover :items="filteredJobs.running" :fields="['uuid', 'createdAt', 'startedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]" :sort-by="'startedAt'" :sort-desc="false">
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
           (queued during {{ row.item.createdAt | formatDuring(row.item.startedAt) }})
@@ -26,11 +38,23 @@
           </b-button>
         </template>
 
+        <template #cell(operation)="row">
+          {{ row.item.id.operation }}
+        </template>
+
+        <template #cell(trigger)="row">
+          {{ row.item.id.trigger }}
+        </template>
+
+        <template #cell(subjects)="row">
+          {{ row.item.id.subjects }}
+        </template>
+
       </b-table>
       Abort ?
-      <h1>Archive</h1>
+      <h1>Ended</h1>
       Filters here
-      <b-table striped hover :items="filteredJobs.archived" :fields="['uuid', 'createdAt', 'startedAt', 'endedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]">
+      <b-table striped hover :items="filteredJobs.ended" :fields="['uuid', 'createdAt', 'startedAt', 'endedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]" :sort-by="'endedAt'" :sort-desc="true">
 
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
@@ -47,9 +71,22 @@
           (ended since {{ row.item.endedAt | formatAgo }})
         </template>
 
+        <template #cell(operation)="row">
+          {{ row.item.id.operation }}
+        </template>
+
+        <template #cell(trigger)="row">
+          {{ row.item.id.trigger }}
+        </template>
+
+        <template #cell(subjects)="row">
+          {{ row.item.id.subjects }}
+        </template>
+
         <template #cell(state)="row">
-          <span v-if="row.item.state === 'failure'" v-b-tooltip.hover :title="row.item.error" class="badge badge-danger">{{ row.item.state }}</span>
-          <span v-else>{{ row.item.state }}</span>
+          <span v-if="row.item.state === 'failed'" v-b-tooltip.hover :title="row.item.error" class="badge badge-danger">{{ row.item.state }}</span>
+          <span v-else>{{ row.item.state }} </span>
+          <span v-if="row.item.warnings.length > 0" class="badge badge-warning">{{row.item.warnings.length}} warnings</span>
         </template>
 
         <template #cell(actions)="row">
@@ -83,9 +120,7 @@ import * as moment from 'moment'
 export default {
   inject: ['backgroundClient', 'foregroundClient'],
   props: {
-    operation: String,
-    repository: String,
-    backup: String
+    search: Object
   },
   filters: {
     formatDuring(date1, date2) {
@@ -109,29 +144,7 @@ export default {
   },
   computed: {
     filteredJobs() {
-      const filter = (jobs) => {
-        return jobs.filter(job => {
-          if (this.operation && job.operation !== this.operation) {
-            return false
-          }
-
-          if (this.repository && (job.subjects || {}).repository !== this.repository) {
-            return false
-          }
-
-          if (this.backup && (job.subjects || {}).backup !== this.backup) {
-            return false
-          }
-
-          return true
-        })
-      }
-
-      return this.jobs && {
-        queue: filter(this.jobs.queue),
-        running: filter(this.jobs.running),
-        archived: filter(this.jobs.archived)
-      }
+      return this.jobs
     }
   },
   created() {
@@ -143,7 +156,7 @@ export default {
   },
   methods: {
     async retrieveJobs() {
-        this.jobs = await this.backgroundClient.getJobs()
+        this.jobs = await this.backgroundClient.getJobs(this.search || {})
     },
     cancelAutoUpdate() {
         clearInterval(this.timer)
@@ -153,6 +166,25 @@ export default {
         runLogs: [],
         title: 'Job ' + uuid + ' logs (realtime)'
       }
+
+      // TODO : Fix this shitty code
+        this.$nextTick(() => {
+      this.$nextTick(() => {
+        setTimeout(() => {
+        const modal = this.$refs['my-modal'].getActiveElement()
+        const modalBody = modal && modal.querySelector('.modal-body')
+
+        if (!modalBody) {
+          console.log('pas possible')
+          return
+        }
+          this.$nextTick(() => {
+              modalBody.scrollTop = Number.MAX_SAFE_INTEGER
+          })
+        }, 250)
+
+        })
+      })
 
       const logsListener = this.foregroundClient.getJobRealtimeLogs(uuid)
 

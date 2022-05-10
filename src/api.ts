@@ -1,172 +1,192 @@
-import { Logger } from './logger'
-import { ApiConfig } from './config'
-import Daemon from './daemon'
-import express from 'express'
-import { Server } from 'http'
-import basicAuth from 'express-basic-auth'
-import { json as jsonParser } from 'body-parser'
+import HttpServer from 'js-libs/http-server'
+import { Logger } from 'js-libs/logger'
+import Application from './application'
+import { mapValues, pick } from 'lodash'
+import RepositoriesService, { RepositoriesSummary } from './repositories-service'
+import BackupService, { BackupsSummary } from './backup-service'
+import SnapshotsService from './snapshots-service'
+import JobsService, { Job, semanticJobPriorities, JobPriority } from './jobs-service'
+import FnScheduler from 'js-libs/fn-scheduler'
+import { realtimeLogs } from 'js-libs/jobs-server-helpers'
 import { basename } from 'path'
-import { Socket } from 'net'
-import HtpasswdValidator from 'htpasswd-verify'
 
-export default class Api {
-    protected logger: Logger
-    protected app: express.Application
-    protected server?: Server
-    protected config: ApiConfig
-    protected connections: Record<string, Socket> = {}
+/** @type integer */
+type integer = number
 
-    constructor(config: ApiConfig, daemon: Daemon, logger: Logger) {
-        this.logger = logger
+export interface ApiConfig {
+    port: integer
+    users?: Array<{
+        username: string
+        password: string
+    }>
+}
 
-        this.app = express()
-        this.config = config
+function jobToJson(job: Job<any>) {
+    return {
+        ...job.toJSON(),
+        runLogs: undefined
+    }
+}
 
-        const htpasswordValidator = new HtpasswdValidator(config.users.reduce((dict, user) => ({...dict, [user.username]: user.password}), {}))
+function summaryToJson(summary: RepositoriesSummary | BackupsSummary) {
+    return mapValues(summary, operations => mapValues(operations, (values: any) => ({
+        lastEndedJob: values.lastEndedJob ? jobToJson(values.lastEndedJob) : null,
+        runningJob: values.runningJob ? jobToJson(values.runningJob) : null,
+        queuingJob: values.queuingJob ? jobToJson(values.queuingJob) : null,
+        nextSchedule: values.nextSchedule || null
+    })))
+}
 
-        this.app.use(basicAuth({
-            authorizer(inputUsername: string, inputPassword: string) {
-                return htpasswordValidator.verify(inputUsername, inputPassword)
+//  ts-json-schema-generator --path node_modules/js-libs/jobs.d.ts --type SemanticJobPriority --no-top-ref -f tsconfig.json
+function priorityParamToTsValue(priorityParam: string | undefined): JobPriority | undefined {
+    if (priorityParam === undefined) {
+        return
+    }
+    if (/-?[0-9]+/.test(priorityParam)) {
+        return parseInt(priorityParam, 10)
+    }
+
+    if(!semanticJobPriorities.includes(priorityParam)) {
+        throw new Error('Invalid provided priority')
+    }
+
+    return priorityParam as JobPriority
+}
+
+export default class Api extends HttpServer {
+    constructor(
+        {config, logger, device, repositoriesService, backupService, snapshotsService, jobsService}:
+        {config: ApiConfig, logger: Logger, device: string, repositoriesService: RepositoriesService,
+         backupService: BackupService, snapshotsService: SnapshotsService, jobsService: JobsService }
+    ) {
+        super({
+            port: config.port,
+            auth: config.users && {
+                users: config.users
             },
-            challenge: true
-        }))
+            webUiFilesPath: 'webui',
+            logger,
+            api: {
+                prefix: 'api',
+                routes: [
+                    {
+                        method: 'get',
+                        path: '/config',
+                        handler(req, res) {
+                            res.send({
+                                device,
+                                repositories: repositoriesService.getRepositories().map(repo => pick(repo, 'name')),
+                                backups: backupService.getBackups().map(backup => pick(backup, 'name', 'repositories'))
+                            })
+                        }
+                    },
+                    {
+                        method: 'get',
+                        path: '/jobs',
+                        async handler(req, res) {
+                            const query = req.query.query ? JSON.parse(req.query.query as string) : {}
+                            res.send(mapValues(
+                                {
+                                    queueing: await jobsService.findQueuingJobs(query),
+                                    running: await jobsService.findRunningJobs(query),
+                                    ended: await jobsService.findEndedJobs(
+                                        query,
+                                        {endedAt: -1},
+                                        req.query.limit ? parseInt(req.query.limit as string) : 20,
+                                        req.query.skip ? parseInt(req.query.skip as string) : 0
+                                    )
+                                },
+                                jobs => jobs.map(jobToJson)
+                            ))
+                        }
+                    },
+                    {
+                        method: 'get',
+                        path: '/summary',
+                        async handler(req, res) {
+                            res.send({
+                                repositories: summaryToJson(await repositoriesService.getSummary()),
+                                backups: summaryToJson(await backupService.getSummary())
+                            })
+                        }
+                    },
+                    {
+                        method: 'get',
+                        path: '/snapshots',
+                        async handler(req, res) {
+                            res.send(await snapshotsService.listSnapshots({
+                                backupName: req.query.backup as string | undefined,
+                                repositoryName: req.query.repository as string | undefined,
+                                device: req.query.device as string | undefined
+                            }, 'api'))
+                        }
+                    },
+                    {
+                        method: 'get',
+                        path: '/jobs/:job/realtime-logs',
+                        async handler(req, res) {
+                            const job = await jobsService.getJob(req.params.job)
+                            realtimeLogs({job, req, res, fromBeginning: true})
+                        }
+                    },
+                    {
+                        method: 'post',
+                        path: '/backups/:backup/backup',
+                        async handler(req, res) {
+                            backupService.backup(req.params.backup, 'api', priorityParamToTsValue(req.query.priority as string | undefined))
+                            res.end()
+                        }
+                    },
+                    {
+                        method: 'post',
+                        path: '/backups/:backup/prune',
+                        async handler(req, res) {
+                            backupService.prune(req.params.backup, 'api', priorityParamToTsValue(req.query.priority as string | undefined))
+                            res.end()
+                        }
+                    },
+                    {
+                        method: 'post',
+                        path: '/repositories/:repository/check',
+                        async handler(req, res) {
+                            repositoriesService.checkRepository(req.params.repository, 'api', priorityParamToTsValue(req.query.priority as string | undefined))
+                            res.end()
+                        }
+                    },
+                    {
+                        method: 'get',
+                        path: '/snapshots/:repository/:snapshot',
+                        async handler(req, res) {
+                            return snapshotsService.getSnapshot(req.params.repository, req.params.snapshot, 'api')
+                        }
+                    },
+                    {
+                        method: 'get',
+                        path: '/snapshots/:repository/:snapshot/content',
+                        async handler(req, res) {
+                            const format = req.query.type === 'zip' ? 'zip' : 'tar'
+                            const path = req.query.path as string || '/'
+                            const filename = req.query.type === 'dir' ? req.params.snapshot+'.'+format : basename(path)
+                            res.header('Content-Disposition', 'attachment; filename="'+filename+'"')
+                            try {
+                                await snapshotsService.downloadSnapshot(req.params.repository, req.params.snapshotid, res, path, format, 'api')
+                            } catch (e) {
+                                // How to notify there is an error ???????????????????
+                                //req.socket && req.socket.destroy(new Error('bada'))
+                            }
+                        }
+                    }
 
-        this.app.use(jsonParser())
+        // apiRouter.get('/stats/repositories', async (req, res, next) => {
+        //     try {
+        //         res.send(await daemon.getRepositoriesStats())
+        //     } catch (e) {
+        //         next(e)
+        //     }
+        // })
 
-        const apiRouter = express.Router()
-        this.app.use('/api', apiRouter)
-        this.app.use('/', express.static('webui'))
-
-        apiRouter.get('/config', (req, res) => {
-            res.send(daemon.getConfigSummary())
-        })
-
-        apiRouter.post('/repositories/:repository/check', (req, res) => {
-            daemon.checkRepository(req.params.repository, 'api', req.query.priority as string | undefined)
-            res.end()
-        })
-
-        apiRouter.post('/backups/:backup/backup', (req, res) => {
-            daemon.backup(req.params.backup, 'api', req.query.priority as string | undefined)
-            res.end()
-        })
-
-        apiRouter.post('/backups/:backup/prune', (req, res) => {
-            daemon.prune(req.params.backup, 'api', req.query.priority as string | undefined)
-            res.end()
-        })
-
-        apiRouter.get('/jobs', async (req, res) => {
-            res.send(await daemon.getJobs())
-        })
-
-        apiRouter.get('/summary', async (req, res) => {
-            res.send(await daemon.getSummary())
-        })
-
-        apiRouter.get('/jobs/:job', async (req, res, next) => {
-            try {
-                res.send(await daemon.getJob(req.params.job).toJson(true))
-            } catch (e) {
-                next(e)
+                ]
             }
         })
-
-        apiRouter.get('/jobs/:job/realtime-logs', (req, res, next) => {
-            try {
-                const job = daemon.getJob(req.params.job)
-                const fromBeginning = !!req.query['from-begin']
-
-                res.set('Content-Type', 'application/x-ndjson')
-
-                if (fromBeginning) {
-                    job.getRunLogs().forEach(runLog => res.write(JSON.stringify(runLog) + '\n'))
-                }
-
-                if (['success', 'failure', 'aborted', 'canceled'].includes(job.getState())) {
-                    return res.end()
-                }
-
-                job.on('log', (runLog) => {
-                    res.write(JSON.stringify(runLog) + '\n')
-                })
-
-                const close = () => {
-                    res.end()
-                    req.off('close', close)
-                }
-
-                req.once('close', close)
-                job.once('canceled', close)
-                job.once('ended', close)
-            } catch (e) {
-                next(e)
-            }
-        })
-
-        apiRouter.get('/snapshots', async (req, res, next) => {
-            try {
-                res.send(await daemon.listSnapshots({
-                    ...req.query.backup && {backupName: req.query.backup as string},
-                    ...req.query.repository && {repositoryName: req.query.repository as string},
-                }, 'api'))
-            } catch (e) {
-                next(e)
-            }
-        })
-
-        apiRouter.get('/snapshots/:repository/:snapshot', async (req, res, next) => {
-            try {
-                res.send(await daemon.getSnapshot(req.params.repository, req.params.snapshot, 'api'))
-            } catch (e) {
-                next(e)
-            }
-        })
-
-        apiRouter.get('/snapshots/:repository/:snapshot/content', async (req, res, next) => {
-            try {
-                const format = req.query.type === 'zip' ? 'zip' : 'tar'
-                const path = req.query.path as string || '/'
-                const filename = req.query.type === 'dir' ? req.params.snapshot+'.'+format : basename(path)
-                res.header('Content-Disposition', 'attachment; filename="'+filename+'"')
-                res.send(await daemon.downloadSnapshot(req.params.repository, req.params.snapshot, res, path, format, 'api'))
-            } catch (e) {
-                next(e)
-            }
-        })
-
-        this.app.use((err: Error, req: any, res: any, next: any) => {
-            this.logger.notice('API error', { e: err })
-            res.status(500).send(err.toString());
-        });
-
-    }
-
-    public start() {
-        if (this.server) {
-            return
-        }
-        this.server = this.app.listen(this.config.port)
-
-        this.server.on('connection', (conn) => {
-            const key = conn.remoteAddress + ':' + conn.remotePort;
-            this.connections[key] = conn;
-            conn.on('close', () => {
-                delete this.connections[key];
-            });
-        });
-    }
-
-
-    public stop() {
-        if (!this.server) {
-            return
-        }
-
-        this.server.close()
-
-        Object.keys(this.connections).forEach(key => this.connections[key].destroy())
-
-        delete this.server
     }
 }

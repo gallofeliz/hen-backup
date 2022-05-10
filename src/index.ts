@@ -1,30 +1,9 @@
 import loadConfig from './config'
-import createLogger, { Logger } from './logger'
-import Daemon from './daemon'
-import Api from './api'
+import Application from './application'
+import { handleExitSignals } from 'js-libs/exit-handle'
 
-const config = loadConfig()
-const logger = createLogger(config.log.level)
+const application = new Application(loadConfig(process.argv[2]))
 
-logger.info('Starting', { config })
+application.start()
 
-// Creating Daemon
-const daemon = new Daemon(config, logger)
-daemon.start()
-
-// Creating API
-let api: Api
-if (config.api) {
-    api = new Api(config.api, daemon, logger)
-    api.start()
-}
-
-process.on('SIGTERM', () => {
-    logger.info('Exit requested, stopping...')
-    daemon.stop()
-    if (api) {
-        api.stop()
-    }
-})
-
-process.on('exit', () => logger.info('Bye Bye'))
+handleExitSignals(() => application.stop())

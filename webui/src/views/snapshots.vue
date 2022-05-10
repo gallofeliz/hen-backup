@@ -25,7 +25,7 @@
   </b-form>
 
   <div v-if="results">
-    <b-table striped hover :items="results" :fields="['date', 'backup', 'repository', 'id', { key: 'actions', label: 'Actions' }]">
+    <b-table striped hover :items="results" :fields="['date', 'backup', 'repository', 'id', 'job',{ key: 'actions', label: 'Actions' }]" :sort-by="'date'" :sort-desc="true">
 
       <template #cell(date)="row">
         {{ row.item.date | formatDate }}
@@ -124,14 +124,14 @@ export default {
   },
   computed: {
     optionsBackup() {
-      return [{text: '', value: null}].concat(Object.keys(this.config.backups).map(name => ({text: name, value: name })))
+      return [{text: '', value: null}].concat(this.config.backups.map(backup => ({text: backup.name, value: backup.name })))
     },
     optionsRepositories() {
       if (this.filterBackup) {
-        return [{text: '', value: null}].concat(this.config.backups[this.filterBackup].repositories.map(name => ({text: name, value: name })))
+        return [{text: '', value: null}].concat(this.config.backups.find(backup => backup.name === this.filterBackup).repositories.map(name => ({text: name, value: name })))
       }
 
-      return [{text: '', value: null}].concat(Object.keys(this.config.repositories).map(name => ({text: name, value: name })))
+      return [{text: '', value: null}].concat(this.config.repositories.map(repo => ({text: repo.name, value: repo.name })))
     },
     resultsStats() {
       return {
@@ -153,15 +153,16 @@ export default {
         this.results = await this.foregroundClient.listSnapshots({
           repository: this.filterRepository,
           backup: this.filterBackup,
+          device: this.config.device
         })
     },
     downloadSnapshot(path, format, type) {
-      window.location.href = this.foregroundClient.getDownloadSnapshotUrl(this.explain.repository, this.explain.snapshot, path, format, type)
+      window.location.href = this.foregroundClient.getDownloadSnapshotUrl(this.explain.repository, this.explain.id, path, format, type)
     },
     async showDetails(repository, snapshotId) {
       this.explain = await this.foregroundClient.getSnapshot(repository, snapshotId)
 
-      this.explain.title = `Snapshot ${this.explain.snapshot} of backup ${this.explain.backup} on repository ${this.explain.repository}`
+      this.explain.title = `Snapshot ${this.explain.id} of backup ${this.explain.backup} on repository ${this.explain.repository}`
 
       this.$refs['my-modal'].show()
     },

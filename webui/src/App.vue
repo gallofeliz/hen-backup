@@ -20,7 +20,7 @@
           <b-navbar-nav class="ml-auto">
 
           <b-nav-text right v-if="config">
-            Device {{config.hostname}}
+            Device {{config.device}}
           </b-nav-text>
         </b-navbar-nav>
 
@@ -51,11 +51,14 @@ class Client extends EventEmitter {
   getDownloadSnapshotUrl(repository, snapshot, path, format, type) {
     return '/api/snapshots/'+encodeURI(repository)+'/'+encodeURI(snapshot)+'/content?' + new URLSearchParams({type, path, format}).toString()
   }
-  async getJobs() {
-    return this.call('/jobs')
+  async getJobs(query) {
+    return this.call('/jobs?query=' + (query ? JSON.stringify(query) : ''))
   }
   async getJob(uuid) {
     return this.call('/jobs/'+encodeURI(uuid))
+  }
+  async getRepositoriesStats() {
+    return this.call('/stats/repositories')
   }
   getJobRealtimeLogs(uuid) {
     const logsListener = new EventEmitter
