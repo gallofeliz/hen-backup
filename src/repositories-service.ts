@@ -38,12 +38,17 @@ export interface Repository extends ResticRepository {
 }
 
 export interface RepositoriesSummary {
-    [repositoryName: string]: Record<'checkRepository', {
-        lastEndedJob: Job<void> | undefined
-        runningJob: Job<void> | undefined
-        queuingJob: Job<void> | undefined
-        nextSchedule: Date | undefined | null
-    }>
+    [repositoryName: string]: {
+        checkRepository: {
+            lastEndedJob: Job<void> | undefined
+            runningJob: Job<void> | undefined
+            queuingJob: Job<void> | undefined
+            nextSchedule: Date | undefined | null
+        },
+        sizeMeasurement: {
+            lastEndedJob: Job<number> | undefined
+        }
+    }
 }
 
 export default class RepositoriesService {
@@ -162,12 +167,19 @@ export default class RepositoriesService {
                         nextSchedule: this.schedulers
                             .find(scheduler => scheduler.getId().operation === 'checkRepository' && scheduler.getId().repository === repository.name)
                             ?.getNextScheduledDate()
+                    },
+                    sizeMeasurement: {
+                        lastEndedJob: undefined
                     }
                 }
             }))
         )
     }
+
 }
+
+
+
 //     public async getRepositoriesStats() {
 //         const sharedResolutions: any = {
 //             size: {},

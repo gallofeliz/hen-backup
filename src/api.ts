@@ -176,15 +176,6 @@ export default class Api extends HttpServer {
                             }
                         }
                     }
-
-        // apiRouter.get('/stats/repositories', async (req, res, next) => {
-        //     try {
-        //         res.send(await daemon.getRepositoriesStats())
-        //     } catch (e) {
-        //         next(e)
-        //     }
-        // })
-
                 ]
             }
         })

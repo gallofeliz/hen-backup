@@ -83,7 +83,7 @@
       <h1>Repositories</h1>
       <div v-for="(operations, repositoryName) in summary.repositories" :key="repositoryName" class="status-element" :class="{'border-danger': (operations.checkRepository.lastEndedJob &&  operations.checkRepository.lastEndedJob.state === 'failed')}" :ref="'repository-' + repositoryName">
         <b-icon-server class="icon"></b-icon-server>
-        {{repositoryName}} <span v-if="repositoriesStats[repositoryName] && Object.keys(repositoriesStats[repositoryName]).length > 0">(<span class="repostat" v-if="repositoriesStats[repositoryName].size">{{repositoriesStats[repositoryName].size | formatSize}}</span><span class="repostat" v-if="repositoriesStats[repositoryName].billing">{{repositoriesStats[repositoryName].billing | formatBilling}}</span>)</span>
+        {{repositoryName}} <!--<span v-if="repositoriesStats[repositoryName] && Object.keys(repositoriesStats[repositoryName]).length > 0">(<span class="repostat" v-if="repositoriesStats[repositoryName].size">{{repositoriesStats[repositoryName].size | formatSize}}</span><span class="repostat" v-if="repositoriesStats[repositoryName].billing">{{repositoriesStats[repositoryName].billing | formatBilling}}</span>)</span>-->
         <p>
           Last check :
           <span v-if="operations.checkRepository.lastEndedJob">
@@ -137,16 +137,10 @@ export default {
   filters: {
     formatSize(sizeStat) {
       let str = sizeStat.value + 'B'
-      if (sizeStat.shareName) {
-        str += ' shared ' + sizeStat.shareName
-      }
       return str
     },
     formatBilling(billingStat) {
       let str = billingStat.value + ' ' + billingStat.currency
-      if (billingStat.shareName) {
-        str += ' shared ' + billingStat.shareName
-      }
       return str
     },
     formatAgo(date) {
@@ -171,7 +165,6 @@ export default {
 
     window.addEventListener('resize', this.windowResizeHandler)
 
-    this.retrieveStats()
     // Use https://www.npmjs.com/package/express-ws to get realtime jobs changes ?
     this.timer = setInterval(() => {
       this.retrieveSummary()
@@ -194,9 +187,6 @@ export default {
         this.summary = await this.backgroundClient.getSummary()
 
         this.$nextTick(() => this.redraw())
-    },
-    async retrieveStats() {
-        this.repositoriesStats = await this.backgroundClient.getRepositoriesStats()
     },
     cancelAutoUpdate() {
         clearInterval(this.timer)
@@ -264,8 +254,7 @@ export default {
         summary: null,
         timer: null,
         windowResizeHandler: null,
-        config: null,
-        repositoriesStats: {}
+        config: null
     }
   },
   beforeDestroy () {

@@ -57,9 +57,6 @@ class Client extends EventEmitter {
   async getJob(uuid) {
     return this.call('/jobs/'+encodeURI(uuid))
   }
-  async getRepositoriesStats() {
-    return this.call('/stats/repositories')
-  }
   getJobRealtimeLogs(uuid) {
     const logsListener = new EventEmitter
     const controller = new AbortController
