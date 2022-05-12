@@ -3,27 +3,14 @@ import ResticClient, { ResticRepository } from './restic-client'
 import { NetworkLimit } from './application'
 import FnScheduler, { Schedule } from 'js-libs/fn-scheduler'
 import { Logger } from 'js-libs/logger'
-import { HttpRequest } from './http-request'
+import httpRequest, { HttpRequest } from './http-request'
 import { zipObject } from 'lodash'
 
-interface BaseStat {
-    shareName?: string
-}
-
-interface BaseBillingStat {
-    currency: string
-}
-
-interface HttpSizeStatFetch extends BaseStat, HttpRequest {
+export interface HttpRepositorySizeMeasurement extends HttpRequest {
     type: 'http'
 }
 
-interface HttpBillingStatFetch extends BaseStat, HttpRequest, BaseBillingStat {
-    type: 'http'
-}
-
-export type SizeStatFetch = HttpSizeStatFetch
-export type BillingStatFetch = HttpBillingStatFetch
+export type RepositorySizeMeasurement = HttpRepositorySizeMeasurement
 
 export interface Repository extends ResticRepository {
     name: string
@@ -31,10 +18,10 @@ export interface Repository extends ResticRepository {
         schedules?: Schedule[]
         priority?: JobPriority
     }
-    usageStats?: {
-        size?: SizeStatFetch
-        billing?: BillingStatFetch
-    }
+    sizeMeasurement?: {
+        schedules?: Schedule[]
+        priority?: JobPriority
+    } & RepositorySizeMeasurement
 }
 
 export interface RepositoriesSummary {
@@ -56,7 +43,7 @@ export default class RepositoriesService {
     protected resticClient: ResticClient
     protected repositories: Repository[]
     protected networkLimit: NetworkLimit
-    protected schedulers: FnScheduler[]
+    protected schedulers: FnScheduler[] = []
     protected logger: Logger
 
     constructor(
@@ -69,15 +56,29 @@ export default class RepositoriesService {
         this.networkLimit = networkLimit
         this.logger = logger
 
-        this.schedulers = this.repositories
-            .filter((repository) => repository.check?.schedules)
-            .map((repository) => new FnScheduler({
-                id: { operation: 'checkRepository', repository: repository.name },
-                fn: () => this.checkRepository(repository.name, 'scheduler'),
-                logger: this.logger,
-                schedules: repository.check!.schedules!,
-                runOnStart: true
-            }))
+        this.schedulers.push(
+            ...this.repositories
+                .filter((repository) => repository.check?.schedules)
+                .map((repository) => new FnScheduler({
+                    id: { operation: 'checkRepository', repository: repository.name },
+                    fn: () => this.checkRepository(repository.name, 'scheduler'),
+                    logger: this.logger,
+                    schedules: repository.check!.schedules!,
+                    runOnStart: true
+                }))
+        )
+
+        this.schedulers.push(
+            ...this.repositories
+                .filter((repository) => repository.sizeMeasurement?.schedules)
+                .map((repository) => new FnScheduler({
+                    id: { operation: 'measureRepositorySize', repository: repository.name },
+                    fn: () => this.measureRepositorySize(repository.name, 'scheduler'),
+                    logger: this.logger,
+                    schedules: repository.sizeMeasurement!.schedules!,
+                    runOnStart: true
+                }))
+        )
     }
 
     public async start() {
@@ -152,6 +153,34 @@ export default class RepositoriesService {
         })
     }
 
+    public measureRepositorySize(repositoryName: string, trigger: 'scheduler' | 'api', priority?: JobPriority) {
+        const repository = this.getRepository(repositoryName)
+
+        if (!repository.sizeMeasurement) {
+            throw new Error('Undefined sizeMeasurement on repository ' + repository.name)
+        }
+
+        this.jobsService.run<number>({
+            priority: priority || repository.sizeMeasurement.priority,
+            id: {
+                trigger,
+                operation: 'measureRepositorySize',
+                subjects: { repository: repository.name }
+            },
+            keepResult: true,
+            logger: this.logger,
+            fn: async ({abortSignal, logger}) => {
+                const httpResult: unknown = await httpRequest(repository.sizeMeasurement!, abortSignal, logger)
+
+                if (typeof httpResult !== 'number' && !(typeof httpResult === 'string' && /^[0-9]+$/.test(httpResult))) {
+                    throw new Error('Expected Http result to be a number or number-like string, received ' + JSON.stringify(httpResult))
+                }
+
+                return parseInt(httpResult as string, 10)
+            }
+        })
+    }
+
     public async getSummary(): Promise<RepositoriesSummary> {
         return zipObject(
             this.repositories.map(r => r.name),
@@ -169,7 +198,8 @@ export default class RepositoriesService {
                             ?.getNextScheduledDate()
                     },
                     sizeMeasurement: {
-                        lastEndedJob: undefined
+                        lastEndedJob: await this.jobsService
+                            .findEndedJob({'id.operation': 'measureRepositorySize', 'id.subjects.repository': repository.name}, {endedAt: -1})
                     }
                 }
             }))

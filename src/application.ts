@@ -5,7 +5,7 @@ import FsWatcher from 'js-libs/fs-watcher'
 import createLogger from 'js-libs/logger'
 import Api from './api'
 import ResticClient from './restic-client'
-import RepositoriesService, { Repository, SizeStatFetch, BillingStatFetch } from './repositories-service'
+import RepositoriesService, { Repository } from './repositories-service'
 import BackupService, { Backup } from './backup-service'
 import SnapshotsService from './snapshots-service'
 import JobsService from './jobs-service'
@@ -44,10 +44,6 @@ export interface UserProvidedAppConfig {
     backups: Record<string, Omit<Backup, 'repositories' | 'name'> & {
         repositories: Array<Repository | string> | Record<string, Omit<Repository, 'name'>>
     }>
-    repositoriesSharedStats?: {
-        size?: Record<string, SizeStatFetch>
-        billing?: Record<string, BillingStatFetch>
-    }
 }
 
 export default class Application {

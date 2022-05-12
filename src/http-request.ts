@@ -29,7 +29,11 @@ export default async function httpRequest(request: HttpRequest, abortSignal: Abo
     abortSignal.addEventListener('abort', onSignalAbort)
 
     try {
-        await gotRequest
+        const response = await gotRequest
+
+        const isJson = (response.headers['content-type'] || '').includes('json')
+
+        return isJson ? await gotRequest.json() : await gotRequest.text()
     } finally {
         abortSignal.removeEventListener('abort', onSignalAbort)
     }

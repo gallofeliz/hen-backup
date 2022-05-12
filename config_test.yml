@@ -34,7 +34,7 @@ repositories:
       schedules:
         - 6h
       type: http
-      url: https://mockbin.org/bin/06d4e319-2fe5-4633-b99b-1781575c952e
+      url: https://prout.free.beeceptor.com/global_dd
 
 backups:
   app1:

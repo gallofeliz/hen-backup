@@ -42,7 +42,7 @@ function priorityParamToTsValue(priorityParam: string | undefined): JobPriority 
     if (priorityParam === undefined) {
         return
     }
-    if (/-?[0-9]+/.test(priorityParam)) {
+    if (/^-?[0-9]+$/.test(priorityParam)) {
         return parseInt(priorityParam, 10)
     }
 

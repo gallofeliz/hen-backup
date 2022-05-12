@@ -83,7 +83,12 @@
       <h1>Repositories</h1>
       <div v-for="(operations, repositoryName) in summary.repositories" :key="repositoryName" class="status-element" :class="{'border-danger': (operations.checkRepository.lastEndedJob &&  operations.checkRepository.lastEndedJob.state === 'failed')}" :ref="'repository-' + repositoryName">
         <b-icon-server class="icon"></b-icon-server>
-        {{repositoryName}} <!--<span v-if="repositoriesStats[repositoryName] && Object.keys(repositoriesStats[repositoryName]).length > 0">(<span class="repostat" v-if="repositoriesStats[repositoryName].size">{{repositoriesStats[repositoryName].size | formatSize}}</span><span class="repostat" v-if="repositoriesStats[repositoryName].billing">{{repositoriesStats[repositoryName].billing | formatBilling}}</span>)</span>-->
+        {{repositoryName}}
+        <span v-if="operations.sizeMeasurement.lastEndedJob">
+          (Size : <span v-if="operations.sizeMeasurement.lastEndedJob.state === 'done'">{{operations.sizeMeasurement.lastEndedJob.result | prettyBytes}}</span><span v-else class="badge badge-danger">Error</span> updated {{ operations.sizeMeasurement.lastEndedJob.endedAt | formatAgo }})
+        </span>
+
+        <!--<span v-if="repositoriesStats[repositoryName] && Object.keys(repositoriesStats[repositoryName]).length > 0">(<span class="repostat" v-if="repositoriesStats[repositoryName].size">{{repositoriesStats[repositoryName].size | formatSize}}</span><span class="repostat" v-if="repositoriesStats[repositoryName].billing">{{repositoriesStats[repositoryName].billing | formatBilling}}</span>)</span>-->
         <p>
           Last check :
           <span v-if="operations.checkRepository.lastEndedJob">
@@ -135,14 +140,6 @@ export default {
   props: {
   },
   filters: {
-    formatSize(sizeStat) {
-      let str = sizeStat.value + 'B'
-      return str
-    },
-    formatBilling(billingStat) {
-      let str = billingStat.value + ' ' + billingStat.currency
-      return str
-    },
     formatAgo(date) {
       if (!date) {
         throw new Error('Invalid date')
@@ -279,8 +276,5 @@ export default {
         height: 40px;
         margin: 0 10px 10px 0;
         vertical-align: middle;
-    }
-    .repostat:not(:first-child)::before {
-        content: ' | ';
     }
 </style>
