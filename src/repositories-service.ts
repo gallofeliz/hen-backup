@@ -3,14 +3,16 @@ import ResticClient, { ResticRepository } from './restic-client'
 import { NetworkLimit } from './application'
 import FnScheduler, { Schedule } from 'js-libs/fn-scheduler'
 import { Logger } from 'js-libs/logger'
-import httpRequest, { HttpRequest } from './http-request'
 import { zipObject } from 'lodash'
+import httpRequest, { HttpRequestConfig } from 'js-libs/http-request'
+import jsonata from 'jsonata'
 
-export interface HttpRepositorySizeMeasurement extends HttpRequest {
+export interface RepositorySizeHttpMeasurement extends Pick<HttpRequestConfig, 'url' | 'method' | 'timeout' | 'retries' | 'outputType'> {
     type: 'http'
+    jsonQuery?: string
 }
 
-export type RepositorySizeMeasurement = HttpRepositorySizeMeasurement
+export type RepositorySizeMeasurement = RepositorySizeHttpMeasurement
 
 export interface Repository extends ResticRepository {
     name: string
@@ -170,13 +172,21 @@ export default class RepositoriesService {
             keepResult: true,
             logger: this.logger,
             fn: async ({abortSignal, logger}) => {
-                const httpResult: unknown = await httpRequest(repository.sizeMeasurement!, abortSignal, logger)
+                let result: unknown = await httpRequest({outputType: 'auto', ...repository.sizeMeasurement!, abortSignal, logger})
 
-                if (typeof httpResult !== 'number' && !(typeof httpResult === 'string' && /^[0-9]+$/.test(httpResult))) {
-                    throw new Error('Expected Http result to be a number or number-like string, received ' + JSON.stringify(httpResult))
+                if (repository.sizeMeasurement!.jsonQuery && typeof result === 'object') {
+                    result = jsonata(repository.sizeMeasurement!.jsonQuery).evaluate(result)
                 }
 
-                return parseInt(httpResult as string, 10)
+                if (typeof result === 'string' && /^[0-9]+$/.test(result)) {
+                    result = parseInt(result, 10)
+                }
+
+                if (typeof result !== 'number') {
+                    throw new Error('Expected Http result to be a number or number-like string, received ' + JSON.stringify(result))
+                }
+
+                return result
             }
         })
     }

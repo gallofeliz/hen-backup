@@ -34,7 +34,8 @@ repositories:
       schedules:
         - 6h
       type: http
-      url: https://prout.free.beeceptor.com/global_dd
+      url: http://echo.jsontest.com/a/5000000000000
+      jsonQuery: a
 
 backups:
   app1:
