@@ -1,6 +1,5 @@
 import { Duration } from 'js-libs/utils'
 import { ResticForgetPolicy} from './restic-client'
-import { Hook } from './hook-handler'
 import JobsService, { JobPriority, Job } from './jobs-service'
 import RepositoriesService from './repositories-service'
 import ResticClient, { ResticRepository } from './restic-client'
@@ -8,9 +7,22 @@ import { NetworkLimit } from './application'
 import FnScheduler, { Schedule } from 'js-libs/fn-scheduler'
 import FsWatcher from 'js-libs/fs-watcher'
 import { Logger } from 'js-libs/logger'
-import { HttpRequest } from './http-request'
-import handleHook from './hook-handler'
 import { zipObject } from 'lodash'
+import httpRequest, { HttpRequestConfig } from 'js-libs/http-request'
+
+// function isHttpHook(hook: Hook): hook is HttpHook {
+//     return hook.type === 'http'
+// }
+
+interface BackupBaseHook {
+    onfailure?: 'continue' | 'stop' | 'ignore'
+}
+
+interface BackupHttpHook extends BackupBaseHook, Pick<HttpRequestConfig, 'url' | 'method' | 'timeout' | 'retries'> {
+    type: 'http'
+}
+
+type BackupHook = BackupHttpHook
 
 export interface Backup {
     name: string
@@ -31,7 +43,7 @@ export interface Backup {
         retentionPolicy: ResticForgetPolicy
     },
     hooks?: {
-        before?: Hook
+        before?: BackupHook
     }
 }
 
@@ -150,7 +162,7 @@ export default class BackupService {
                 const beforeHookOk = await (async () => {
                     if (backup.hooks?.before) {
                         try {
-                            await handleHook(backup.hooks.before, abortSignal, logger)
+                            await this.handleHook(backup.hooks.before, abortSignal, logger)
                             return true
                         } catch (e) {
                             switch (backup.hooks.before.onfailure) {
@@ -273,5 +285,11 @@ export default class BackupService {
                 }
             }))
         )
+    }
+
+    protected async handleHook(hook: BackupHook, abortSignal: AbortSignal, logger: Logger) {
+        // for the moment, only Http, so need to disciminate
+
+        return httpRequest({...hook, abortSignal, logger})
     }
 }

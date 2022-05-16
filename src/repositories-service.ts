@@ -3,27 +3,16 @@ import ResticClient, { ResticRepository } from './restic-client'
 import { NetworkLimit } from './application'
 import FnScheduler, { Schedule } from 'js-libs/fn-scheduler'
 import { Logger } from 'js-libs/logger'
-import { HttpRequest } from './http-request'
 import { zipObject } from 'lodash'
+import httpRequest, { HttpRequestConfig } from 'js-libs/http-request'
+import jsonata from 'jsonata'
 
-interface BaseStat {
-    shareName?: string
-}
-
-interface BaseBillingStat {
-    currency: string
-}
-
-interface HttpSizeStatFetch extends BaseStat, HttpRequest {
+export interface RepositorySizeHttpMeasurement extends Pick<HttpRequestConfig, 'url' | 'method' | 'timeout' | 'retries' | 'outputType'> {
     type: 'http'
+    jsonQuery?: string
 }
 
-interface HttpBillingStatFetch extends BaseStat, HttpRequest, BaseBillingStat {
-    type: 'http'
-}
-
-export type SizeStatFetch = HttpSizeStatFetch
-export type BillingStatFetch = HttpBillingStatFetch
+export type RepositorySizeMeasurement = RepositorySizeHttpMeasurement
 
 export interface Repository extends ResticRepository {
     name: string
@@ -31,19 +20,24 @@ export interface Repository extends ResticRepository {
         schedules?: Schedule[]
         priority?: JobPriority
     }
-    usageStats?: {
-        size?: SizeStatFetch
-        billing?: BillingStatFetch
-    }
+    sizeMeasurement?: {
+        schedules?: Schedule[]
+        priority?: JobPriority
+    } & RepositorySizeMeasurement
 }
 
 export interface RepositoriesSummary {
-    [repositoryName: string]: Record<'checkRepository', {
-        lastEndedJob: Job<void> | undefined
-        runningJob: Job<void> | undefined
-        queuingJob: Job<void> | undefined
-        nextSchedule: Date | undefined | null
-    }>
+    [repositoryName: string]: {
+        checkRepository: {
+            lastEndedJob: Job<void> | undefined
+            runningJob: Job<void> | undefined
+            queuingJob: Job<void> | undefined
+            nextSchedule: Date | undefined | null
+        },
+        sizeMeasurement: {
+            lastEndedJob: Job<number> | undefined
+        }
+    }
 }
 
 export default class RepositoriesService {
@@ -51,7 +45,7 @@ export default class RepositoriesService {
     protected resticClient: ResticClient
     protected repositories: Repository[]
     protected networkLimit: NetworkLimit
-    protected schedulers: FnScheduler[]
+    protected schedulers: FnScheduler[] = []
     protected logger: Logger
 
     constructor(
@@ -64,15 +58,29 @@ export default class RepositoriesService {
         this.networkLimit = networkLimit
         this.logger = logger
 
-        this.schedulers = this.repositories
-            .filter((repository) => repository.check?.schedules)
-            .map((repository) => new FnScheduler({
-                id: { operation: 'checkRepository', repository: repository.name },
-                fn: () => this.checkRepository(repository.name, 'scheduler'),
-                logger: this.logger,
-                schedules: repository.check!.schedules!,
-                runOnStart: true
-            }))
+        this.schedulers.push(
+            ...this.repositories
+                .filter((repository) => repository.check?.schedules)
+                .map((repository) => new FnScheduler({
+                    id: { operation: 'checkRepository', repository: repository.name },
+                    fn: () => this.checkRepository(repository.name, 'scheduler'),
+                    logger: this.logger,
+                    schedules: repository.check!.schedules!,
+                    runOnStart: true
+                }))
+        )
+
+        this.schedulers.push(
+            ...this.repositories
+                .filter((repository) => repository.sizeMeasurement?.schedules)
+                .map((repository) => new FnScheduler({
+                    id: { operation: 'measureRepositorySize', repository: repository.name },
+                    fn: () => this.measureRepositorySize(repository.name, 'scheduler'),
+                    logger: this.logger,
+                    schedules: repository.sizeMeasurement!.schedules!,
+                    runOnStart: true
+                }))
+        )
     }
 
     public async start() {
@@ -147,6 +155,42 @@ export default class RepositoriesService {
         })
     }
 
+    public measureRepositorySize(repositoryName: string, trigger: 'scheduler' | 'api', priority?: JobPriority) {
+        const repository = this.getRepository(repositoryName)
+
+        if (!repository.sizeMeasurement) {
+            throw new Error('Undefined sizeMeasurement on repository ' + repository.name)
+        }
+
+        this.jobsService.run<number>({
+            priority: priority || repository.sizeMeasurement.priority,
+            id: {
+                trigger,
+                operation: 'measureRepositorySize',
+                subjects: { repository: repository.name }
+            },
+            keepResult: true,
+            logger: this.logger,
+            fn: async ({abortSignal, logger}) => {
+                let result: unknown = await httpRequest({outputType: 'auto', ...repository.sizeMeasurement!, abortSignal, logger})
+
+                if (repository.sizeMeasurement!.jsonQuery && typeof result === 'object') {
+                    result = jsonata(repository.sizeMeasurement!.jsonQuery).evaluate(result)
+                }
+
+                if (typeof result === 'string' && /^[0-9]+$/.test(result)) {
+                    result = parseInt(result, 10)
+                }
+
+                if (typeof result !== 'number') {
+                    throw new Error('Expected Http result to be a number or number-like string, received ' + JSON.stringify(result))
+                }
+
+                return result
+            }
+        })
+    }
+
     public async getSummary(): Promise<RepositoriesSummary> {
         return zipObject(
             this.repositories.map(r => r.name),
@@ -162,12 +206,20 @@ export default class RepositoriesService {
                         nextSchedule: this.schedulers
                             .find(scheduler => scheduler.getId().operation === 'checkRepository' && scheduler.getId().repository === repository.name)
                             ?.getNextScheduledDate()
+                    },
+                    sizeMeasurement: {
+                        lastEndedJob: await this.jobsService
+                            .findEndedJob({'id.operation': 'measureRepositorySize', 'id.subjects.repository': repository.name}, {endedAt: -1})
                     }
                 }
             }))
         )
     }
+
 }
+
+
+
 //     public async getRepositoriesStats() {
 //         const sharedResolutions: any = {
 //             size: {},

@@ -15,12 +15,12 @@ api:
     - username: admin
       password: $2y$05$iDa0IeAeA2M4y6USukUm2eBeTnWuN24eaGGTsVhT4U6qLElRyqgk.
 
-repositoriesSharedStats:
-  billing:
-    ovh_xx:
-      type: http
-      url: https://mockbin.org/bin/f02467dc-7278-4861-9466-30103ca27491
-      currency: EUR
+# repositoriesSharedStats:
+#   billing:
+#     ovh_xx:
+#       type: http
+#       url: https://mockbin.org/bin/f02467dc-7278-4861-9466-30103ca27491
+#       currency: EUR
 
 repositories:
   global_dd:
@@ -30,12 +30,12 @@ repositories:
       schedules:
         - 1d
       priority: inferior
-    stats:
-      size:
-        type: http
-        url: https://mockbin.org/bin/06d4e319-2fe5-4633-b99b-1781575c952e
-        group: ~
-      billing: ovh_xx
+    sizeMeasurement:
+      schedules:
+        - 6h
+      type: http
+      url: http://echo.jsontest.com/a/5000000000000
+      jsonQuery: a
 
 backups:
   app1:
@@ -65,8 +65,6 @@ backups:
             username: "user-xx"
             password: "xx"
             identity_api_version: 3
-        stats:
-          billing: ovh_xx
 
     paths:
       - /sources
@@ -93,8 +91,6 @@ backups:
         nbOfMonthly: 12
         nbOfYearly: 5
         minTime: 1h
-    #- BACKUP_APP1_PRIORITY_IMMEDIATE_AFTER=xxx ?
-    #- BACKUP_APP1_STOP_AFTER=xxx ?
     hooks:
       before:
         type: http
@@ -102,8 +98,6 @@ backups:
         timeout: 1m
         retries: 3
         onfailure: continue
-        #- BACKUP_APP1_HOOKS_BEFORE_ASYNC= put next of backup process on the queue in case of hook very long ?
-        # Add a endpoint trigger to run backup if a service call a http endpoint ?
   app2:
     paths:
       - /test

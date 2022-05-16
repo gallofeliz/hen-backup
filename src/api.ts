@@ -42,7 +42,7 @@ function priorityParamToTsValue(priorityParam: string | undefined): JobPriority 
     if (priorityParam === undefined) {
         return
     }
-    if (/-?[0-9]+/.test(priorityParam)) {
+    if (/^-?[0-9]+$/.test(priorityParam)) {
         return parseInt(priorityParam, 10)
     }
 
@@ -176,15 +176,6 @@ export default class Api extends HttpServer {
                             }
                         }
                     }
-
-        // apiRouter.get('/stats/repositories', async (req, res, next) => {
-        //     try {
-        //         res.send(await daemon.getRepositoriesStats())
-        //     } catch (e) {
-        //         next(e)
-        //     }
-        // })
-
                 ]
             }
         })
