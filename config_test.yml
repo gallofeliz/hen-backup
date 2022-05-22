@@ -53,19 +53,23 @@ backups:
       - name: app1_ovh
         location: swift:xx:/
         password: abc
-        provider:
-          name: 'os'
-          params:
-            auth_url: https://auth.cloud.ovh.net/v3
-            project_id: xx
-            project_name: "xx"
-            region_name: "GRA"
-            user_domain_name: "Default"
-            project_domain_id: "default"
-            username: "user-xx"
-            password: "xx"
-            identity_api_version: 3
-
+        locationParams:
+          authUrl: https://auth.cloud.ovh.net/v3
+          projectId: xx
+          projectName: "xx"
+          regionName: "GRA"
+          userDomainName: "Default"
+          projectDomainId: "default"
+          username: "user-xx"
+          password: "xx"
+          identityApiVersion: 3
+        sizeMeasurement:
+          schedules:
+            - 6h
+          type: ovh
+          appKey: aaa
+          appSecret: bbb
+          consumerKey: ccc
     paths:
       - /sources
     excludes:
