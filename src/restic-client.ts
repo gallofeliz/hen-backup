@@ -17,13 +17,14 @@ export interface ResticSnapshot {
     objects?: object[]
 }
 
-export interface ResticRepository { // or location { uri, type, params }
+export interface ResticRepository {
     location: string
     password: string
-    provider?: {
-        name: 'os' | 'aws' | 'st' | 'b2' | 'azure' | 'google' | 'rclone'
-        params: Record<string, string>
-    }
+    locationParams?: Record<string, string>
+    // provider?: {
+    //     name: 'os' | 'aws' | 'st' | 'b2' | 'azure' | 'google' | 'rclone'
+    //     params: Record<string, string>
+    // }
 }
 
 export interface ResticNetworkLimit {
@@ -209,13 +210,44 @@ export default class ResticClient {
         }, true)
     }
 
-    protected getProviderEnvs(repository: ResticRepository): Record<string, string> {
-        if (!repository.provider) {
-            return {}
+    public explainLocation(location: string) {
+        if (location.substr(0, 1) === '/' || !location.includes(':')) { // I don't know the rule ...
+            location = 'fs::' + location
         }
 
-        return reduce(repository.provider.params, (providerEnvs: Record<string, string>, value: string, key: string) => {
-            providerEnvs[repository.provider!.name.toUpperCase() + '_' + key.toUpperCase()] = value.toString()
+        const [service, container, path] = location.split(':')
+
+        console.log('>>>>>>>>>>>>', service, container, path)
+
+        const provider = (() => {
+            switch(service) {
+                case 'fs':
+                    return 'fs'
+                case 'swift':
+                    return 'os'
+                case 's3':
+                    return 'aws'
+                case 'b2':
+                    return 'b2'
+                case 'azure':
+                    return 'azure'
+                case 'gs':
+                    return 'google'
+                case 'rclone':
+                    return 'rclone'
+                default:
+                    throw new Error('Unknown provider')
+            }
+        })()
+
+        return {provider, container, path}
+    }
+
+    protected getProviderEnvs(repository: ResticRepository): Record<string, string> {
+        const {provider} = this.explainLocation(repository.location)
+
+        return reduce(repository.locationParams || {}, (providerEnvs: Record<string, string>, value: string, key: string) => {
+            providerEnvs[provider.toUpperCase() + '_' + key.split(/(?=[A-Z])/).join('_').toUpperCase()] = value.toString()
 
             return providerEnvs
         }, {})

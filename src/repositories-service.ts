@@ -12,7 +12,14 @@ export interface RepositorySizeHttpMeasurement extends Pick<HttpRequestConfig, '
     jsonQuery?: string
 }
 
-export type RepositorySizeMeasurement = RepositorySizeHttpMeasurement
+export interface RepositorySizeOvhMeasurement {
+    type: 'ovh'
+    appKey: string
+    appSecret: string
+    consumerKey: string
+}
+
+export type RepositorySizeMeasurement = RepositorySizeHttpMeasurement | RepositorySizeOvhMeasurement // | FsMeasurement => du
 
 export interface Repository extends ResticRepository {
     name: string
@@ -47,6 +54,7 @@ export default class RepositoriesService {
     protected networkLimit: NetworkLimit
     protected schedulers: FnScheduler[] = []
     protected logger: Logger
+    protected started: boolean = false
 
     constructor(
         {jobsService, resticClient, repositories, networkLimit, logger}:
@@ -84,11 +92,19 @@ export default class RepositoriesService {
     }
 
     public async start() {
+        this.started = true
         await this.initRepositories()
+
+        // Yes it can happen !
+        if (!this.started) {
+            throw new Error('Interrupted start')
+        }
+
         this.schedulers.forEach(fnSch => fnSch.start())
     }
 
     public async stop() {
+        this.started = false
         this.schedulers.forEach(fnSch => fnSch.stop())
     }
 
@@ -111,26 +127,28 @@ export default class RepositoriesService {
     }
 
     protected async initRepository(repository: Repository) {
-        await this.jobsService.run({
-            id: {
-                trigger: null,
-                operation: 'initRepository',
-                subjects: { repository: repository.name }
-            },
-            logger: this.logger,
-            fn: async ({abortSignal, logger}) => {
-                try {
-                    await this.resticClient.initRepository({
-                        logger,
-                        abortSignal,
-                        repository,
-                        networkLimit: this.networkLimit
-                    })
-                } catch (e) {
-                    logger.info('Repository Init failed, probably because of already initialized (ignoring)')
+        try {
+            await this.jobsService.run({
+                id: {
+                    trigger: null,
+                    operation: 'initRepository',
+                    subjects: { repository: repository.name }
+                },
+                logger: this.logger,
+                fn: async ({abortSignal, logger}) => {
+                    try {
+                        await this.resticClient.initRepository({
+                            logger,
+                            abortSignal,
+                            repository,
+                            networkLimit: this.networkLimit
+                        })
+                    } catch (e) {
+                        logger.info('Repository Init failed, probably because of already initialized (ignoring)')
+                    }
                 }
-            }
-        }, true)
+            }, true)
+        } catch {}
     }
 
     public checkRepository(repositoryName: string, trigger: 'scheduler' | 'api', priority?: JobPriority) {
@@ -172,21 +190,54 @@ export default class RepositoriesService {
             keepResult: true,
             logger: this.logger,
             fn: async ({abortSignal, logger}) => {
-                let result: unknown = await httpRequest({outputType: 'auto', ...repository.sizeMeasurement!, abortSignal, logger})
 
-                if (repository.sizeMeasurement!.jsonQuery && typeof result === 'object') {
-                    result = jsonata(repository.sizeMeasurement!.jsonQuery).evaluate(result)
+                // Typescript cause, I don't know what to do more simple
+                if (!repository.sizeMeasurement) {
+                    return
                 }
 
-                if (typeof result === 'string' && /^[0-9]+$/.test(result)) {
-                    result = parseInt(result, 10)
-                }
+                switch(repository.sizeMeasurement.type) {
+                    case 'http':
 
-                if (typeof result !== 'number') {
-                    throw new Error('Expected Http result to be a number or number-like string, received ' + JSON.stringify(result))
-                }
+                        let result: unknown = await httpRequest({outputType: 'auto', ...repository.sizeMeasurement, abortSignal, logger})
 
-                return result
+                        if (repository.sizeMeasurement.jsonQuery && typeof result === 'object') {
+                            result = jsonata(repository.sizeMeasurement.jsonQuery).evaluate(result)
+                        }
+
+                        if (typeof result === 'string' && /^[0-9]+$/.test(result)) {
+                            result = parseInt(result, 10)
+                        }
+
+                        if (typeof result !== 'number') {
+                            throw new Error('Expected Http result to be a number or number-like string, received ' + JSON.stringify(result))
+                        }
+
+                        return result
+                    case 'ovh': // Yes, it is specific but it is MY APP ahahaha
+
+                        const { provider, container, path } = this.resticClient.explainLocation(repository.location)
+
+                        if (path !== '/') {
+                            throw new Error('This sizeMeasurer only works with root bucket path')
+                        }
+
+                        const ovh = require('ovh')(repository.sizeMeasurement)
+
+                        interface OvhContainer {name: string, region: string, storedBytes: number}
+                        const ovhShortContainers: OvhContainer[] = await ovh.requestPromised('GET', '/cloud/project/' + encodeURIComponent(repository.locationParams?.projectId!) + '/storage')
+
+                        const ovhShortContainer = ovhShortContainers.find(ovhContainer => ovhContainer.name === container && ovhContainer.region === repository.locationParams?.regionName!)
+
+                        if (!ovhShortContainer) {
+                            throw new Error('Unable to find ' + container)
+                        }
+
+                        return ovhShortContainer.storedBytes
+
+                    default:
+                        throw new Error('We should not reach here')
+                }
             }
         })
     }

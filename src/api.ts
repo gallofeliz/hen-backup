@@ -131,6 +131,22 @@ export default class Api extends HttpServer {
                     },
                     {
                         method: 'post',
+                        path: '/jobs/:job/cancel',
+                        async handler(req, res) {
+                            await jobsService.cancel(req.params.job, 'api')
+                            res.end()
+                        }
+                    },
+                    {
+                        method: 'post',
+                        path: '/jobs/:job/abort',
+                        async handler(req, res) {
+                            await jobsService.abort(req.params.job, 'api')
+                            res.end()
+                        }
+                    },
+                    {
+                        method: 'post',
                         path: '/backups/:backup/backup',
                         async handler(req, res) {
                             backupService.backup(req.params.backup, 'api', priorityParamToTsValue(req.query.priority as string | undefined))
