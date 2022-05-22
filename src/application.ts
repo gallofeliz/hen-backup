@@ -117,10 +117,20 @@ export default class Application {
         this.logger.info('App Starting')
         this.started = true
 
-        await this.api.start()
-        await this.jobsService.start()
-        await this.repositoriesService.start()
-        await this.backupService.start()
+        // Pattern problem... start should so be Abortable ?
+
+        try {
+            await this.api.start()
+            await this.jobsService.start()
+            await this.repositoriesService.start()
+            await this.backupService.start()
+        } catch (e) {
+            if (!this.started) {
+                this.logger.info('Interrupted start', {e})
+            } else {
+                throw e
+            }
+        }
     }
 
     async stop() {

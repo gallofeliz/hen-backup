@@ -2,7 +2,7 @@
   <div>
     <div v-if="filteredJobs">
       <h1>Queueing</h1>
-      <b-table striped hover :items="filteredJobs.queueing" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects']" :sort-by="'createdAt'" :sort-desc="false">
+      <b-table striped hover :items="filteredJobs.queueing" :fields="['uuid', 'createdAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]" :sort-by="'createdAt'" :sort-desc="false">
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
           (queuing since {{ row.item.createdAt | formatAgo }})
@@ -19,8 +19,18 @@
         <template #cell(subjects)="row">
           {{ row.item.id.subjects }}
         </template>
+
+        <template #cell(actions)="row">
+          <b-button size="sm" disabled>
+            Prioritize
+          </b-button>
+
+          <b-button size="sm" @click="cancel(row.item.uuid)">
+            Cancel
+          </b-button>
+        </template>
       </b-table>
-      Cancel ? Change priority ?
+
       <h1>Running</h1>
       <b-table striped hover :items="filteredJobs.running" :fields="['uuid', 'createdAt', 'startedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]" :sort-by="'startedAt'" :sort-desc="false">
         <template #cell(createdAt)="row">
@@ -31,11 +41,6 @@
         <template #cell(startedAt)="row">
           {{ row.item.startedAt | formatDate }}
           (running since {{ row.item.startedAt | formatAgo }})
-        </template>
-        <template #cell(actions)="row">
-          <b-button size="sm" @click="showDetails(row.item.uuid)">
-            Details
-          </b-button>
         </template>
 
         <template #cell(operation)="row">
@@ -50,20 +55,38 @@
           {{ row.item.id.subjects }}
         </template>
 
+        <template #cell(actions)="row">
+          <b-button size="sm" @click="showDetails(row.item.uuid)">
+            Details
+          </b-button>
+          <b-button size="sm" @click="abort(row.item.uuid)">
+            Abort
+          </b-button>
+          <b-button size="sm" disabled>
+            Postpone
+          </b-button>
+        </template>
       </b-table>
-      Abort ?
+
       <h1>Ended</h1>
       Filters here
       <b-table striped hover :items="filteredJobs.ended" :fields="['uuid', 'createdAt', 'startedAt', 'endedAt', 'state', 'priority', 'trigger', 'operation', 'subjects', { key: 'actions', label: 'Actions' }]" :sort-by="'endedAt'" :sort-desc="true">
 
         <template #cell(createdAt)="row">
           {{ row.item.createdAt | formatDate }}
-          (queued during {{ row.item.createdAt | formatDuring(row.item.startedAt) }})
+          <span v-if="row.item.startedAt">
+            (queued during {{ row.item.createdAt | formatDuring(row.item.startedAt) }})
+          </span>
+          <span v-else>
+            (queued during {{ row.item.createdAt | formatDuring(row.item.endedAt) }})
+          </span>
         </template>
 
         <template #cell(startedAt)="row">
-          {{ row.item.startedAt | formatDate }}
-          (run during {{ row.item.startedAt | formatDuring(row.item.endedAt) }})
+          <span v-if="row.item.startedAt">
+            {{ row.item.startedAt | formatDate }}
+            (run during {{ row.item.startedAt | formatDuring(row.item.endedAt) }})
+          </span>
         </template>
 
         <template #cell(endedAt)="row">
@@ -93,10 +116,13 @@
           <b-button size="sm" @click="showDetails(row.item.uuid)">
             See logs
           </b-button>
+
+          <b-button size="sm" disabled>
+            Retry
+          </b-button>
         </template>
 
       </b-table>
-      Retry ?
     </div>
 
     <b-modal ref="my-modal" :title="explain.title" size="xl" scrollable>
@@ -160,6 +186,16 @@ export default {
     },
     cancelAutoUpdate() {
         clearInterval(this.timer)
+    },
+    async cancel(uuid) {
+      await this.foregroundClient.cancelJob(uuid)
+
+      this.retrieveJobs()
+    },
+    async abort(uuid) {
+      await this.foregroundClient.abortJob(uuid)
+
+      this.retrieveJobs()
     },
     async showDetails(uuid) {
       this.explain = {

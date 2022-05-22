@@ -183,7 +183,7 @@ export default class JobsService {
     }
 
     public async stop() {
-        await this.jobsRunner.stop()
+        await this.jobsRunner.stop(true, true)
     }
 
     public run<Result>(jobOpts: JobOpts, getResult = false, allowDuplicate = false) {
@@ -263,5 +263,13 @@ export default class JobsService {
         }
 
         return job
+    }
+
+    public async cancel(uuid: string, trigger: 'api') {
+        (await this.getJob(uuid)).cancel('Requested by ' + trigger)
+    }
+
+    public async abort(uuid: string, trigger: 'api') {
+        (await this.getJob(uuid)).abort('Requested by ' + trigger)
     }
 }

@@ -46,16 +46,28 @@ class Client extends EventEmitter {
     return this.call('/snapshots?' + new URLSearchParams(_.pickBy(criteria)).toString())
   }
   async getSnapshot(repository, snapshot) {
-    return this.call('/snapshots/'+encodeURI(repository)+'/'+encodeURI(snapshot))
+    return this.call('/snapshots/'+encodeURIComponent(repository)+'/'+encodeURIComponent(snapshot))
   }
   getDownloadSnapshotUrl(repository, snapshot, path, format, type) {
-    return '/api/snapshots/'+encodeURI(repository)+'/'+encodeURI(snapshot)+'/content?' + new URLSearchParams({type, path, format}).toString()
+    return '/api/snapshots/'+encodeURIComponent(repository)+'/'+encodeURIComponent(snapshot)+'/content?' + new URLSearchParams({type, path, format}).toString()
   }
   async getJobs(query) {
     return this.call('/jobs?query=' + (query ? JSON.stringify(query) : ''))
   }
   async getJob(uuid) {
-    return this.call('/jobs/'+encodeURI(uuid))
+    return this.call('/jobs/'+encodeURIComponent(uuid)+'/abort')
+  }
+  async cancelJob(uuid) {
+    return this.call(
+      '/jobs/'+encodeURIComponent(uuid)+'/cancel',
+      {json: false, method: 'POST'}
+    )
+  }
+  async abortJob(uuid) {
+    return this.call(
+      '/jobs/'+encodeURIComponent(uuid)+'/abort',
+      {json: false, method: 'POST'}
+    )
   }
   getJobRealtimeLogs(uuid) {
     const logsListener = new EventEmitter
@@ -67,7 +79,7 @@ class Client extends EventEmitter {
     }
 
     ;(async () => {
-      const reader = await this.call('/jobs/'+encodeURI(uuid)+'/realtime-logs?from-begin=true', { json: false, stream: true, signal })
+      const reader = await this.call('/jobs/'+encodeURIComponent(uuid)+'/realtime-logs?from-begin=true', { json: false, stream: true, signal })
       let ddone = false
 
       while (!ddone) {
@@ -89,19 +101,19 @@ class Client extends EventEmitter {
   }
   async backup(backup, priority) {
     return this.call(
-      '/backups/'+encodeURI(backup)+'/backup?' + new URLSearchParams(_.pickBy({priority})).toString(),
+      '/backups/'+encodeURIComponent(backup)+'/backup?' + new URLSearchParams(_.pickBy({priority})).toString(),
       {json: false, method: 'POST'}
     )
   }
   async prune(backup, priority) {
     return this.call(
-      '/backups/'+encodeURI(backup)+'/prune?' + new URLSearchParams(_.pickBy({priority})).toString(),
+      '/backups/'+encodeURIComponent(backup)+'/prune?' + new URLSearchParams(_.pickBy({priority})).toString(),
       {json: false, method: 'POST'}
     )
   }
   async check(repository, priority) {
     return this.call(
-      '/repositories/'+encodeURI(repository)+'/check?' + new URLSearchParams(_.pickBy({priority})).toString(),
+      '/repositories/'+encodeURIComponent(repository)+'/check?' + new URLSearchParams(_.pickBy({priority})).toString(),
       {json: false, method: 'POST'}
     )
   }
