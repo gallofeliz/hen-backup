@@ -13,7 +13,6 @@ import { ResticNetworkLimit } from './restic-client'
 import { LogLevel } from 'js-libs/logger'
 import { Size } from 'js-libs/utils'
 import { ApiConfig } from './api'
-import Datastore from 'nedb'
 
 export interface NetworkLimit extends ResticNetworkLimit {}
 

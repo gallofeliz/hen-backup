@@ -1,4 +1,4 @@
-import { Size, sizeToKiB, Duration, durationToSeconds } from 'js-libs/utils'
+import { Size, sizeToKiB, Duration } from 'js-libs/utils'
 import { Logger } from 'js-libs/logger'
 import runProcess, { ProcessConfig } from 'js-libs/process'
 import { reduce, flatten, map, omitBy, isNil } from 'lodash'
@@ -21,10 +21,6 @@ export interface ResticRepository {
     location: string
     password: string
     locationParams?: Record<string, string>
-    // provider?: {
-    //     name: 'os' | 'aws' | 'st' | 'b2' | 'azure' | 'google' | 'rclone'
-    //     params: Record<string, string>
-    // }
 }
 
 export interface ResticNetworkLimit {
@@ -119,7 +115,7 @@ export default class ResticClient {
 
         await this.runRestic({
             cmd: 'dump',
-            args: ['--archive', opts.format, opts.snapshotId, opts.path || '/'],
+            args: ['--archive', opts.format, opts.snapshotId, opts.path || '/'],
             outputStream: opts.stream,
             ...opts
         })
@@ -165,9 +161,9 @@ export default class ResticClient {
         {cmd, args, repository, logger, hostname, abortSignal, outputType, tags, outputStream, networkLimit}:
         ResticOpts & {cmd: string, args?: string[], outputStream?: NodeJS.WritableStream, outputType?: ProcessConfig['outputType']}
     ): Promise<T> {
-        const cmdArgs: string[] = [cmd, '--cleanup-cache', ...args || []]
+        const cmdArgs: string[] = [cmd, '--cleanup-cache', ...args || []]
 
-        if (outputType === 'json' || outputType === 'multilineJson') {
+        if (outputType === 'json' || outputType === 'multilineJson') {
             cmdArgs.push('--json')
         }
 
@@ -211,13 +207,11 @@ export default class ResticClient {
     }
 
     public explainLocation(location: string) {
-        if (location.substr(0, 1) === '/' || !location.includes(':')) { // I don't know the rule ...
+        if (location.substr(0, 1) === '/' || !location.includes(':')) { // I don't know the rule ...
             location = 'fs::' + location
         }
 
         const [service, container, path] = location.split(':')
-
-        console.log('>>>>>>>>>>>>', service, container, path)
 
         const provider = (() => {
             switch(service) {
@@ -246,14 +240,14 @@ export default class ResticClient {
     protected getProviderEnvs(repository: ResticRepository): Record<string, string> {
         const {provider} = this.explainLocation(repository.location)
 
-        return reduce(repository.locationParams || {}, (providerEnvs: Record<string, string>, value: string, key: string) => {
+        return reduce(repository.locationParams || {}, (providerEnvs: Record<string, string>, value: string, key: string) => {
             providerEnvs[provider.toUpperCase() + '_' + key.split(/(?=[A-Z])/).join('_').toUpperCase()] = value.toString()
 
             return providerEnvs
         }, {})
     }
 
-    public tagsArrayToRecord(tags: ResticListTags): ResticRecordTags {
+    protected tagsArrayToRecord(tags: ResticListTags): ResticRecordTags {
         return reduce(tags, (record, stringifyed) => {
             const [key, ...valueParts] = stringifyed.split('=')
             return {

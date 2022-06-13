@@ -4,8 +4,8 @@ import {
 } from 'js-libs/jobs'
 export { JobPriority, semanticJobPriorities } from 'js-libs/jobs'
 import { Logger } from 'js-libs/logger'
-import { sizeToKiB, durationToSeconds } from 'js-libs/utils'
-import { isEqual, pick, mapValues } from 'lodash'
+import { isEqual, pick } from 'lodash'
+import FnScheduler from "js-libs/fn-scheduler";
 
 export interface JobIdentity {
     trigger: 'scheduler' | 'api' | 'fswatcher' | null
@@ -18,155 +18,12 @@ export type JobOpts = JsLibsJobOpts<JobIdentity>
 
 type JobRunnerState = 'queueing' | 'running' | 'ended'
 
-/*
-export class JobsRegistry<RegisteredJob extends Job> {
-    protected maxNbEnded?: number
-    protected maxEndDateDurationSeconds?: number
-    // protected readyOrRunningJobs: Job<any, any>[] = []
-    // protected endedJobs: Job<any, any>[] = []
-    protected jobs: RegisteredJob[] = []
-    //protected nextRemoveExceedEndedTimeout?: NodeJS.Timeout
-    protected logger: Logger
-    protected jobsEndedCollection?: JobsCollection<RegisteredJob>
-
-    constructor(
-        { maxNbEnded, maxEndDateDuration, logger, jobsEndedCollection }:
-        { maxNbEnded?: number, maxEndDateDuration?: Duration, logger:Logger, jobsEndedCollection?: JobsCollection<RegisteredJob> }
-    ) {
-        this.maxEndDateDurationSeconds = maxEndDateDuration ? durationToSeconds(maxEndDateDuration) : undefined
-        this.maxNbEnded = maxNbEnded
-        this.logger = logger
-        this.jobsEndedCollection = jobsEndedCollection
-
-        this.loadEndedJobs()
-    }
-
-    protected async loadEndedJobs() {
-        if (!this.jobsEndedCollection) {
-            return
-        }
-
-        try {
-            this.jobs.push(...await this.jobsEndedCollection.find({}))
-        } catch (e) {
-            this.logger.error('Unable to load ended jobs')
-        }
-    }
-
-    protected async persistEndedJob(job: RegisteredJob) {
-        if (!this.jobsEndedCollection) {
-            return
-        }
-
-        try {
-            await this.jobsEndedCollection.insert(job)
-        } catch (e) {
-            this.logger.error('Unable persist ended job')
-        }
-    }
-
-    protected async unpersistEndedJobs(jobs: RegisteredJob[]) {
-        if (!this.jobsEndedCollection) {
-            return
-        }
-
-        try {
-            await this.jobsEndedCollection.remove({ uuid: { $in : jobs.map(j => j.getUuid()) } })
-        } catch (e) {
-            this.logger.error('Unable to unpersist ended job')
-        }
-    }
-
-    // public addJob(job: Job<any, any>) {
-    //     if (job.getRunState() === 'ended') {
-    //         const olderIndex = this.endedJobs.findIndex((job2) => job2.getEndedAt()! > job.getEndedAt()!)
-    //         if (!olderIndex) {
-    //             this.endedJobs.push(job)
-    //         } else {
-    //             this.endedJobs.splice(olderIndex, 0, job)
-    //         }
-    //         this.removeExceedEnded()
-    //     } else {
-    //         this.readyOrRunningJobs.push(job)
-    //         job.once('ended', () => this.removeExceedEnded())
-    //     }
-    // }
-
-    public addJob(job: RegisteredJob) {
-        if (this.jobs.includes(job)) {
-            return
-        }
-
-        this.jobs.push(job)
-        this.logger.info('Registering job', { job: job.getUuid() })
-
-        if (job.getRunState() === 'ended') {
-            this.persistEndedJob(job)
-            this.removeExceedEnded()
-        } else {
-            const onError = () => {} // Registry avoid to need to catch ;)
-            job.once('error', onError)
-            job.once('ended', () => {
-                job.off('error', onError)
-                this.persistEndedJob(job)
-                this.removeExceedEnded()
-            })
-        }
-    }
-
-    public getJobs() {
-        this.removeExceedEnded()
-        return this.jobs
-    }
-
-    public getJobsByRunState(): Record<JobRunState, RegisteredJob[]> {
-        return {
-            ready: [],
-            running: [],
-            ended: [],
-            ..._.groupBy(this.getJobs(), (job) => job.getRunState())
-        }
-    }
-
-    public getJob(uuid: string) {
-        return this.getJobs().find(job => job.getUuid() === uuid)
-    }
-
-    protected removeExceedEnded() {
-        const endedJobs = _.sortBy(this.jobs.filter((job) => job.getRunState() === 'ended'), (job) => job.getEndedAt())
-        const jobsToRemove: RegisteredJob[] = []
-
-        if (this.maxNbEnded) {
-            jobsToRemove.push(..._.dropRight(endedJobs, this.maxNbEnded))
-        }
-
-        if (this.maxEndDateDurationSeconds) {
-            const nowTime = (new Date).getTime()
-            jobsToRemove.push(..._.takeWhile(endedJobs, (job) => (job.getEndedAt()!.getTime() + this.maxEndDateDurationSeconds! * 1000) < nowTime))
-
-            // const stillEndedJobs = _.without(endedJobs, ...jobsToRemove)
-            // if (stillEndedJobs.length > 0) {
-            //     const nextTimeout = stillEndedJobs[0].getEndedAt()!.getTime() + this.maxEndDateDurationSeconds * 1000 - (new Date).getTime()
-            // }
-        }
-
-        if (!jobsToRemove.length) {
-            return
-        }
-
-        this.logger.info('Cleaning jobs', { jobs: jobsToRemove.map(j => j.getUuid()) })
-        this.jobs = _.without(this.jobs, ...jobsToRemove)
-        this.unpersistEndedJobs(jobsToRemove)
-    }
-}
-
-
-*/
 export default class JobsService {
     protected jobsRunner: JobsRunner<Job<any>>
     protected logger: Logger
     protected notEndedJobsCollection: InMemoryJobsCollection<Job<any>>
     protected endedJobsCollection: FilePersistedJobsCollection<Job<any>>
+    protected schedulers: FnScheduler[] = []
 
     constructor(
         {jobsRunner, logger, jobsDbPath}:
@@ -176,14 +33,23 @@ export default class JobsService {
         this.logger = logger
         this.endedJobsCollection = new FilePersistedJobsCollection(jobsDbPath)
         this.notEndedJobsCollection = new InMemoryJobsCollection()
+
+        this.schedulers.push(new FnScheduler({
+            fn: () => this.cleanEndedJobs(),
+            logger,
+            schedules: ['1d'],
+            runOnStart: true
+        }))
     }
 
     public async start() {
         await this.jobsRunner.start()
+        this.schedulers.forEach(fnSch => fnSch.start())
     }
 
     public async stop() {
         await this.jobsRunner.stop(true, true)
+        this.schedulers.forEach(fnSch => fnSch.stop())
     }
 
     public run<Result>(jobOpts: JobOpts, getResult = false, allowDuplicate = false) {
@@ -223,7 +89,7 @@ export default class JobsService {
         job.once('ended', () => {
             job.off('error', onError)
             this.notEndedJobsCollection.remove({ uuid: job.getUuid() })
-            this.endedJobsCollection.insert(job)
+            this.endedJobsCollection.insert(job).catch(e => this.logger.error('Error on inserting job in endedJobsCollection', {e}))
         })
 
         return getResult
@@ -271,5 +137,152 @@ export default class JobsService {
 
     public async abort(uuid: string, trigger: 'api') {
         (await this.getJob(uuid)).abort('Requested by ' + trigger)
+    }
+
+    protected cleanEndedJobs() {
+        /*
+        export class JobsRegistry<RegisteredJob extends Job> {
+            protected maxNbEnded?: number
+            protected maxEndDateDurationSeconds?: number
+            // protected readyOrRunningJobs: Job<any, any>[] = []
+            // protected endedJobs: Job<any, any>[] = []
+            protected jobs: RegisteredJob[] = []
+            //protected nextRemoveExceedEndedTimeout?: NodeJS.Timeout
+            protected logger: Logger
+            protected jobsEndedCollection?: JobsCollection<RegisteredJob>
+
+            constructor(
+                { maxNbEnded, maxEndDateDuration, logger, jobsEndedCollection }:
+                { maxNbEnded?: number, maxEndDateDuration?: Duration, logger:Logger, jobsEndedCollection?: JobsCollection<RegisteredJob> }
+            ) {
+                this.maxEndDateDurationSeconds = maxEndDateDuration ? durationToSeconds(maxEndDateDuration) : undefined
+                this.maxNbEnded = maxNbEnded
+                this.logger = logger
+                this.jobsEndedCollection = jobsEndedCollection
+
+                this.loadEndedJobs()
+            }
+
+            protected async loadEndedJobs() {
+                if (!this.jobsEndedCollection) {
+                    return
+                }
+
+                try {
+                    this.jobs.push(...await this.jobsEndedCollection.find({}))
+                } catch (e) {
+                    this.logger.error('Unable to load ended jobs')
+                }
+            }
+
+            protected async persistEndedJob(job: RegisteredJob) {
+                if (!this.jobsEndedCollection) {
+                    return
+                }
+
+                try {
+                    await this.jobsEndedCollection.insert(job)
+                } catch (e) {
+                    this.logger.error('Unable persist ended job')
+                }
+            }
+
+            protected async unpersistEndedJobs(jobs: RegisteredJob[]) {
+                if (!this.jobsEndedCollection) {
+                    return
+                }
+
+                try {
+                    await this.jobsEndedCollection.remove({ uuid: { $in : jobs.map(j => j.getUuid()) } })
+                } catch (e) {
+                    this.logger.error('Unable to unpersist ended job')
+                }
+            }
+
+            // public addJob(job: Job<any, any>) {
+            //     if (job.getRunState() === 'ended') {
+            //         const olderIndex = this.endedJobs.findIndex((job2) => job2.getEndedAt()! > job.getEndedAt()!)
+            //         if (!olderIndex) {
+            //             this.endedJobs.push(job)
+            //         } else {
+            //             this.endedJobs.splice(olderIndex, 0, job)
+            //         }
+            //         this.removeExceedEnded()
+            //     } else {
+            //         this.readyOrRunningJobs.push(job)
+            //         job.once('ended', () => this.removeExceedEnded())
+            //     }
+            // }
+
+            public addJob(job: RegisteredJob) {
+                if (this.jobs.includes(job)) {
+                    return
+                }
+
+                this.jobs.push(job)
+                this.logger.info('Registering job', { job: job.getUuid() })
+
+                if (job.getRunState() === 'ended') {
+                    this.persistEndedJob(job)
+                    this.removeExceedEnded()
+                } else {
+                    const onError = () => {} // Registry avoid to need to catch ;)
+                    job.once('error', onError)
+                    job.once('ended', () => {
+                        job.off('error', onError)
+                        this.persistEndedJob(job)
+                        this.removeExceedEnded()
+                    })
+                }
+            }
+
+            public getJobs() {
+                this.removeExceedEnded()
+                return this.jobs
+            }
+
+            public getJobsByRunState(): Record<JobRunState, RegisteredJob[]> {
+                return {
+                    ready: [],
+                    running: [],
+                    ended: [],
+                    ..._.groupBy(this.getJobs(), (job) => job.getRunState())
+                }
+            }
+
+            public getJob(uuid: string) {
+                return this.getJobs().find(job => job.getUuid() === uuid)
+            }
+
+            protected removeExceedEnded() {
+                const endedJobs = _.sortBy(this.jobs.filter((job) => job.getRunState() === 'ended'), (job) => job.getEndedAt())
+                const jobsToRemove: RegisteredJob[] = []
+
+                if (this.maxNbEnded) {
+                    jobsToRemove.push(..._.dropRight(endedJobs, this.maxNbEnded))
+                }
+
+                if (this.maxEndDateDurationSeconds) {
+                    const nowTime = (new Date).getTime()
+                    jobsToRemove.push(..._.takeWhile(endedJobs, (job) => (job.getEndedAt()!.getTime() + this.maxEndDateDurationSeconds! * 1000) < nowTime))
+
+                    // const stillEndedJobs = _.without(endedJobs, ...jobsToRemove)
+                    // if (stillEndedJobs.length > 0) {
+                    //     const nextTimeout = stillEndedJobs[0].getEndedAt()!.getTime() + this.maxEndDateDurationSeconds * 1000 - (new Date).getTime()
+                    // }
+                }
+
+                if (!jobsToRemove.length) {
+                    return
+                }
+
+                this.logger.info('Cleaning jobs', { jobs: jobsToRemove.map(j => j.getUuid()) })
+                this.jobs = _.without(this.jobs, ...jobsToRemove)
+                this.unpersistEndedJobs(jobsToRemove)
+            }
+        }
+
+
+        */
     }
 }

@@ -6,20 +6,18 @@ import { Logger } from 'js-libs/logger'
 import { zipObject } from 'lodash'
 import httpRequest, { HttpRequestConfig } from 'js-libs/http-request'
 import jsonata from 'jsonata'
+import runProcess from 'js-libs/process'
 
-export interface RepositorySizeHttpMeasurement extends Pick<HttpRequestConfig, 'url' | 'method' | 'timeout' | 'retries' | 'outputType'> {
+export interface RepositorySizeHttpMeasurement extends Pick<HttpRequestConfig, 'url' | 'method' | 'timeout' | 'retries' | 'outputType'> {
     type: 'http'
     jsonQuery?: string
 }
 
-export interface RepositorySizeOvhMeasurement {
-    type: 'ovh'
-    appKey: string
-    appSecret: string
-    consumerKey: string
+export interface RepositorySizeAutoMeasurement {
+    type: 'auto'
 }
 
-export type RepositorySizeMeasurement = RepositorySizeHttpMeasurement | RepositorySizeOvhMeasurement // | FsMeasurement => du
+export type RepositorySizeMeasurement = RepositorySizeHttpMeasurement | RepositorySizeAutoMeasurement // | FsMeasurement => du
 
 export interface Repository extends ResticRepository {
     name: string
@@ -39,7 +37,7 @@ export interface RepositoriesSummary {
             lastEndedJob: Job<void> | undefined
             runningJob: Job<void> | undefined
             queuingJob: Job<void> | undefined
-            nextSchedule: Date | undefined | null
+            nextSchedule: Date | undefined | null
         },
         sizeMeasurement: {
             lastEndedJob: Job<number> | undefined
@@ -214,26 +212,59 @@ export default class RepositoriesService {
                         }
 
                         return result
-                    case 'ovh': // Yes, it is specific but it is MY APP ahahaha
+                    case 'auto':
 
                         const { provider, container, path } = this.resticClient.explainLocation(repository.location)
 
-                        if (path !== '/') {
-                            throw new Error('This sizeMeasurer only works with root bucket path')
+                        switch(provider) {
+                            case 'fs':
+                                const processResult: string = await runProcess({
+                                    cmd: 'du',
+                                    args: ['-s', path],
+                                    outputType: 'text',
+                                    abortSignal,
+                                    logger
+                                }, true)
+
+                                const cols = processResult.split('\t')
+
+                                return parseInt(cols[0], 10) * 1024
+                            case 'os':
+                                if (path !== '/') {
+                                    throw new Error('This sizeMeasurer only works with root bucket path')
+                                }
+
+                                try {
+                                    const SwiftClient = require('openstack-swift-client');
+                                    const authenticator = new SwiftClient.KeystoneV3Authenticator({
+                                      endpointUrl: repository.locationParams?.authUrl,
+                                      username: repository.locationParams?.username,
+                                      password: repository.locationParams?.password,
+                                      domainId: repository.locationParams?.projectDomainId,
+                                      projectId: repository.locationParams?.projectId,
+                                      regionId: repository.locationParams?.regionName
+                                    })
+
+                                    const client = new SwiftClient(authenticator);
+                                    const swiftContainers: Array<{bytes: number, name: string}> = await client.list();
+
+                                    //const ovhShortContainers: OvhContainer[] = await ovh.requestPromised('GET', '/cloud/project/' + encodeURIComponent(repository.locationParams?.projectId!) + '/storage')
+
+                                    const swiftContainer = swiftContainers.find(swiftContainer => swiftContainer.name === container)
+
+                                    if (!swiftContainer) {
+                                        throw new Error('Unable to find ' + container)
+                                    }
+
+                                    return swiftContainer.bytes
+
+                                } catch (e) {
+                                    // Swift Error are very riched on informations, sensible and cyclic ref
+                                    throw new Error((e as Error).message)
+                                }
+                            default:
+                                throw new Error('Unhandled ' + provider)
                         }
-
-                        const ovh = require('ovh')(repository.sizeMeasurement)
-
-                        interface OvhContainer {name: string, region: string, storedBytes: number}
-                        const ovhShortContainers: OvhContainer[] = await ovh.requestPromised('GET', '/cloud/project/' + encodeURIComponent(repository.locationParams?.projectId!) + '/storage')
-
-                        const ovhShortContainer = ovhShortContainers.find(ovhContainer => ovhContainer.name === container && ovhContainer.region === repository.locationParams?.regionName!)
-
-                        if (!ovhShortContainer) {
-                            throw new Error('Unable to find ' + container)
-                        }
-
-                        return ovhShortContainer.storedBytes
 
                     default:
                         throw new Error('We should not reach here')

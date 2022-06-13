@@ -3,6 +3,8 @@
 
     Todo :
        - Line danger on links that have 1 or more failed (add "report" on failed errors ?)
+       - Add repo size history graph
+       - Auto refresh repo size after operation ?
 
     <div v-if="summary">
 
@@ -87,7 +89,8 @@
         <span v-if="operations.sizeMeasurement.lastEndedJob">
           (Size : <span v-if="operations.sizeMeasurement.lastEndedJob.state === 'done'">{{operations.sizeMeasurement.lastEndedJob.result | prettyBytes}}</span><span v-else class="badge badge-danger">Error</span> updated {{ operations.sizeMeasurement.lastEndedJob.endedAt | formatAgo }})
         </span>
-
+          <!-- TODO : show only if configured -->
+        <run-button text="Measure" @click="runMeasure(repositoryName, $event)" style="float: right"></run-button>
         <!--<span v-if="repositoriesStats[repositoryName] && Object.keys(repositoriesStats[repositoryName]).length > 0">(<span class="repostat" v-if="repositoriesStats[repositoryName].size">{{repositoriesStats[repositoryName].size | formatSize}}</span><span class="repostat" v-if="repositoriesStats[repositoryName].billing">{{repositoriesStats[repositoryName].billing | formatBilling}}</span>)</span>-->
         <p>
           Last check :
@@ -187,6 +190,11 @@ export default {
     },
     cancelAutoUpdate() {
         clearInterval(this.timer)
+    },
+    async runMeasure(repository, priority) {
+      await this.foregroundClient.measureRepository(repository, priority)
+
+      this.retrieveSummary()
     },
     async runBackup(backup, priority) {
       await this.foregroundClient.backup(backup, priority)

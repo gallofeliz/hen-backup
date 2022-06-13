@@ -117,6 +117,12 @@ class Client extends EventEmitter {
       {json: false, method: 'POST'}
     )
   }
+  async measureRepository(repository, priority) {
+    return this.call(
+      '/repositories/'+encodeURIComponent(repository)+'/measure?' + new URLSearchParams(_.pickBy({priority})).toString(),
+      {json: false, method: 'POST'}
+    )
+  }
   async call(url, {json, method, stream, signal} = {}) {
     return this.handleEvents(async () => {
       const response = await fetch('/api' + url, {method: method || 'GET', signal})

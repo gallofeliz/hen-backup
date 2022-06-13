@@ -1,12 +1,10 @@
 import HttpServer from 'js-libs/http-server'
 import { Logger } from 'js-libs/logger'
-import Application from './application'
 import { mapValues, pick } from 'lodash'
 import RepositoriesService, { RepositoriesSummary } from './repositories-service'
 import BackupService, { BackupsSummary } from './backup-service'
 import SnapshotsService from './snapshots-service'
 import JobsService, { Job, semanticJobPriorities, JobPriority } from './jobs-service'
-import FnScheduler from 'js-libs/fn-scheduler'
 import { realtimeLogs } from 'js-libs/jobs-server-helpers'
 import { basename } from 'path'
 
@@ -68,7 +66,7 @@ export default class Api extends HttpServer {
             logger,
             api: {
                 prefix: 'api',
-                routes: [
+                routes: [
                     {
                         method: 'get',
                         path: '/config',
@@ -117,7 +115,7 @@ export default class Api extends HttpServer {
                             res.send(await snapshotsService.listSnapshots({
                                 backupName: req.query.backup as string | undefined,
                                 repositoryName: req.query.repository as string | undefined,
-                                device: req.query.device as string | undefined
+                                device: req.query.device as string | undefined
                             }, 'api'))
                         }
                     },
@@ -166,6 +164,14 @@ export default class Api extends HttpServer {
                         path: '/repositories/:repository/check',
                         async handler(req, res) {
                             repositoriesService.checkRepository(req.params.repository, 'api', priorityParamToTsValue(req.query.priority as string | undefined))
+                            res.end()
+                        }
+                    },
+                    {
+                        method: 'post',
+                        path: '/repositories/:repository/measure',
+                        async handler(req, res) {
+                            repositoriesService.measureRepositorySize(req.params.repository, 'api', priorityParamToTsValue(req.query.priority as string | undefined))
                             res.end()
                         }
                     },

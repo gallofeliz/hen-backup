@@ -33,9 +33,10 @@ repositories:
     sizeMeasurement:
       schedules:
         - 6h
-      type: http
-      url: http://echo.jsontest.com/a/5000000000000
-      jsonQuery: a
+      type: 'auto'
+      # type: http
+      # url: http://echo.jsontest.com/a/5000000000000
+      # jsonQuery: a
 
 backups:
   app1:
@@ -66,10 +67,7 @@ backups:
         sizeMeasurement:
           schedules:
             - 6h
-          type: ovh
-          appKey: aaa
-          appSecret: bbb
-          consumerKey: ccc
+          type: 'auto'
     paths:
       - /sources
     excludes:
