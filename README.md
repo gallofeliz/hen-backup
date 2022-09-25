@@ -76,3 +76,4 @@ Should be user friendly :)
 - Add warnings in Job shown in the UI to see warnings (for example failed pre-hook ?)
 - Add progress for Job
 - Add "steps" in Job ?
+- Add button to download a copy of source to make manual backup (offline)

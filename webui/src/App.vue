@@ -51,6 +51,9 @@ class Client extends EventEmitter {
   getDownloadSnapshotUrl(repository, snapshot, path, format, type) {
     return '/api/snapshots/'+encodeURIComponent(repository)+'/'+encodeURIComponent(snapshot)+'/content?' + new URLSearchParams({type, path, format}).toString()
   }
+  getManualBackupUrl(backup, priority) {
+    return '/api/backups/'+encodeURIComponent(backup)+'/manual-backup?' + new URLSearchParams(_.pickBy({priority})).toString()
+  }
   async getJobs(query) {
     return this.call('/jobs?query=' + (query ? JSON.stringify(query) : ''))
   }

@@ -9,6 +9,7 @@ import FsWatcher from 'js-libs/fs-watcher'
 import { Logger } from 'js-libs/logger'
 import { zipObject } from 'lodash'
 import httpRequest, { HttpRequestConfig } from 'js-libs/http-request'
+import runProcess from 'js-libs/process'
 
 interface BackupBaseHook {
     onfailure?: 'continue' | 'stop' | 'ignore'
@@ -204,6 +205,60 @@ export default class BackupService {
                 }
             }
         })
+    }
+
+    public generateManualSpnapshot(backupName: string, stream: NodeJS.WritableStream, trigger: 'api', priority?: JobPriority) {
+        const backup = this.getBackup(backupName)
+
+        return this.jobsService.run({
+            priority: priority || 'immediate',
+            id: {
+                trigger,
+                operation: 'generateManualSpnapshot',
+                subjects: { backup: backup.name }
+            },
+            logger: this.logger,
+            fn: async ({abortSignal, logger}) => {
+
+                const beforeHookOk = await (async () => {
+                    if (backup.hooks?.before) {
+                        try {
+                            await this.handleHook(backup.hooks.before, abortSignal, logger)
+                            return true
+                        } catch (e) {
+                            switch (backup.hooks.before.onfailure) {
+                                case 'stop':
+                                    throw e
+                                case 'ignore':
+                                    logger.warning('Before Hook failed, ignoring', {error: e})
+                                    return true
+                                case 'continue':
+                                default:
+                                    logger.info('Before Hook failed, continue but job will be fails', {error: e})
+                                    return false
+                            }
+                        }
+                    }
+                })()
+
+                await runProcess({
+                    logger,
+                    abortSignal,
+                    cmd: 'tar',
+                    args: [
+                        '-czf',
+                        '-'
+                    ]
+                    .concat(backup.paths)
+                    .concat(backup.excludes ? backup.excludes.reduce((args: string[], exclude) => [...args, '--exclude', exclude], []) : []),
+                    outputStream: stream
+                })
+
+                if (!beforeHookOk) {
+                    throw new Error('One hook failed')
+                }
+            }
+        }, true, true)
     }
 
     public prune(backupName: string, trigger: 'scheduler' | 'api', priority?: JobPriority) {

@@ -152,6 +152,25 @@ export default class Api extends HttpServer {
                         }
                     },
                     {
+                        method: 'get',
+                        path: '/backups/:backup/manual-backup',
+                        async handler(req, res) {
+                            const filename = req.params.backup + '.tgz'
+                            res.header('Content-Disposition', 'attachment; filename="'+filename+'"')
+                            try {
+                                await backupService.generateManualSpnapshot(
+                                    req.params.backup,
+                                    res,
+                                    'api',
+                                    priorityParamToTsValue(req.query.priority as string | undefined)
+                                )
+                            } catch (e) {
+                                // How to notify there is an error ???????????????????
+                                //req.socket && req.socket.destroy(new Error('bada'))
+                            }
+                        }
+                    },
+                    {
                         method: 'post',
                         path: '/backups/:backup/prune',
                         async handler(req, res) {

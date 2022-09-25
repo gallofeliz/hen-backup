@@ -74,6 +74,10 @@
 
           <run-button text="Prune" @click="runPrune(backupName, $event)" style="float: right"></run-button>
         </p>
+
+        <p>
+          <run-button text="Manual backup" @click="runManualBackup(backupName, $event)"></run-button>
+        </p>
       </div>
 
     </div>
@@ -203,6 +207,11 @@ export default {
     },
     async runPrune(backup, priority) {
       await this.foregroundClient.prune(backup, priority)
+
+      this.retrieveSummary()
+    },
+    async runManualBackup(backup, priority) {
+      window.location = await this.foregroundClient.getManualBackupUrl(backup, priority)
 
       this.retrieveSummary()
     },
