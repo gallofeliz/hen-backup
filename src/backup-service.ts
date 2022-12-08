@@ -246,8 +246,9 @@ export default class BackupService {
                     abortSignal,
                     cmd: 'tar',
                     args: [
-                        '-czf',
+                        '-cf',
                         '-'
+                        // gpg -c --passphrase-fd 1
                     ]
                     .concat(backup.paths)
                     .concat(backup.excludes ? backup.excludes.reduce((args: string[], exclude) => [...args, '--exclude', exclude], []) : []),
