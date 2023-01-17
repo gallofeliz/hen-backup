@@ -1,5 +1,10 @@
 # Hen-Backup
 
+## Informations
+
+- link backup/repositories will be updated to backup/repository (1:1). It will reduce some complexities and allow better concurrency management.
+- This project is not ready to use. I am not using it yet (I am using the old python version). I plan to work on it and use it in 2023 Q1.
+
 ![](https://github.com/gallofeliz/hen-backup/blob/master/Capture%20du%202021-11-04%2001-29-57.png)
 
 Hen-Backup is a backup tool designed to be automatic, complete and flexible. Its values are :
