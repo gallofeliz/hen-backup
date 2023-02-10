@@ -16,7 +16,7 @@ def kill_all_restics():
 
 def call_restic(cmd, args, env, logger, json=False):
     cmd_parts = ["restic"] + [cmd] + args + (['--json'] if json else [])
-    env = {**env, 'RESTIC_CACHE_DIR':'/tmp'}
+    env = {**env, 'RESTIC_CACHE_DIR':'/tmp', 'RESTIC_PACK_SIZE': '4'}
     logger.info('START ' + ' '.join(cmd_parts) + ' with env ' + str(env), extra={'component': 'restic', 'action': 'call_restic', 'status': 'starting'})
     proc = subprocess.Popen(
         cmd_parts,
