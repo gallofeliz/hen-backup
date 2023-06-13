@@ -1,5 +1,7 @@
 # Hen-Backup
 
+Abandoned. Creating generic software takes time, and I don't have it!
+
 ## Informations
 
 - link backup/repositories will be updated to backup/repository (1:1). It will reduce some complexities and allow better concurrency management.
